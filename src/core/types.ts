@@ -6,3 +6,8 @@ export interface Point {
   x: number;
   y: number;
 }
+
+export interface Obstacle {
+  points: Point[];
+  thickness: number;
+}
