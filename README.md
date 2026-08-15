@@ -32,13 +32,14 @@ Cette étiquette est visible directement dans le menu de chaque scénario.
 
 ## Utiliser Simularium
 
-Le tout tient dans un seul fichier HTML autonome, sans dépendance ni build :
+**En ligne : [piascwal.github.io/simularium](https://piascwal.github.io/simularium/)**
+
+Ou en local — le tout tient dans un seul fichier HTML autonome, sans
+dépendance ni build :
 
 ```bash
 # ouvre simplement index.html dans un navigateur
 ```
-
-Ou en ligne une fois GitHub Pages activé sur ce dépôt : *(lien à venir)*.
 
 ## État du projet
 
