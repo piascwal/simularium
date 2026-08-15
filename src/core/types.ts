@@ -11,3 +11,25 @@ export interface Obstacle {
   points: Point[];
   thickness: number;
 }
+
+export type AgentShape = 'triangleBig' | 'triangleSmall' | 'circle' | 'square';
+
+export interface AgentTypeDef {
+  color: string;
+  shape: AgentShape;
+  radius: number;
+  label: string;
+}
+
+export type ScenarioId = 'heider' | 'ants' | 'poisson' | 'foule';
+
+export interface ScenarioSliderDefaults {
+  perception: number;
+  force: number;
+  speed: number;
+  panicRadius: number;
+  avoidance: number;
+  cohesion?: number;
+  alignment?: number;
+  separation?: number;
+}
