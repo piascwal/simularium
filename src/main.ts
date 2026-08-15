@@ -5,6 +5,7 @@ import { rand } from './core/rng';
 import { MENU_BAR_H, CELL, PCELL, DIST_CELL, AGENT_CELL, OBSTACLE_DRAW_SPACING } from './core/constants';
 import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry';
 import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } from './core/grid/conway';
+import { pcols, prows, pidx, pherReturn, pherSearch, initPheromoneGrid, depositPheromone, samplePheromone, evaporatePheromone } from './core/grid/pheromone';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -15,7 +16,7 @@ import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } f
     worldW = W*zoneScale;
     worldH = H*zoneScale;
     initGrid(worldW, worldH);
-    initPheromoneGrid();
+    initPheromoneGrid(worldW, worldH);
     maybeRecomputeNestField();
   }
   function resize(){
@@ -95,43 +96,8 @@ import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } f
   }
 
   // ---------- Phéromones (colonie de fourmis) ----------
-  // Deux pistes distinctes : "retour" (recrutement établi, Deneubourg et al. 1990) et
-  // "recherche" (marquage d'exploration, extrapolation — voir primitive marquageExploration).
-  let pcols=0, prows=0, pherReturn=null, pherSearch=null;
-  function initPheromoneGrid(){
-    if(worldW<=0 || worldH<=0) return;
-    pcols = Math.max(1, Math.ceil(worldW/PCELL));
-    prows = Math.max(1, Math.ceil(worldH/PCELL));
-    pherReturn = new Float32Array(pcols*prows);
-    pherSearch = new Float32Array(pcols*prows);
-  }
-  function pidx(x,y){ return y*pcols+x; }
-  function depositPheromone(field,x,y,amount){
-    if(!field) return;
-    const gx=Math.floor(x/PCELL), gy=Math.floor(y/PCELL);
-    if(gx<0||gy<0||gx>=pcols||gy>=prows) return;
-    const i=pidx(gx,gy);
-    field[i] = Math.min(1, field[i]+amount);
-  }
-  function samplePheromone(field,x,y){
-    if(!field) return 0;
-    const gx=Math.floor(x/PCELL), gy=Math.floor(y/PCELL);
-    if(gx<0||gy<0||gx>=pcols||gy>=prows) return 0;
-    return field[pidx(gx,gy)];
-  }
-  function evaporatePheromoneField(field,dt,rate){
-    if(!field) return;
-    const f = Math.max(0, 1-rate*dt);
-    for(let i=0;i<field.length;i++){ field[i]*=f; if(field[i]<0.003) field[i]=0; }
-  }
-  function evaporatePheromone(dt){
-    // La piste de retour (recrutement) s'efface vite — elle n'a de sens que peu de temps.
-    // La piste de recherche dure plus longtemps : c'est le marqueur qui doit encore exister
-    // quand la fourmi revient d'un trajet long (Jackson & Ratnieks 2006 — systèmes de pistes
-    // à durées de vie différentes selon leur rôle).
-    evaporatePheromoneField(pherReturn, dt, 0.15);
-    evaporatePheromoneField(pherSearch, dt, 0.05);
-  }
+  // initPheromoneGrid / pidx / depositPheromone / samplePheromone / evaporatePheromone :
+  // voir core/grid/pheromone.ts
   // ---------- Grille spatiale des agents (accélère les requêtes de voisinage) ----------
   // Sans elle, "plus proche de type X" et "voisins dans un rayon" scannent tout le tableau
   // `agents` à chaque appel — ça devient O(n²) par frame et c'est ça qui lague dès quelques
@@ -1802,7 +1768,7 @@ import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } f
     scenario = name;
     TYPES = SCENARIO_TYPES[scenario];
     reset();
-    initPheromoneGrid();
+    initPheromoneGrid(worldW, worldH);
     renderTypeButtons();
     applyScenarioVisibility();
     mode = 'place'; clearToolButtons(); updateHintText();
