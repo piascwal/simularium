@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Corps du moteur historique (monofichier), déplacé verbatim ici en Phase 0.
 // Sera découpé en modules typés core/render/ui dans la Phase 1 (voir le plan de migration).
+import { rand } from './core/rng';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -33,7 +34,7 @@
     grows = Math.max(1, Math.ceil(worldH/CELL));
     grid = new Uint8Array(gcols*grows);
     gage = new Float32Array(gcols*grows);
-    for(let i=0;i<grid.length;i++) grid[i] = Math.random()<0.16 ? 1 : 0;
+    for(let i=0;i<grid.length;i++) grid[i] = rand()<0.16 ? 1 : 0;
   }
   function gidx(x,y){ return y*gcols+x; }
 
@@ -186,7 +187,7 @@
     for(let dy=-cr;dy<=cr;dy++){
       for(let dx=-cr;dx<=cr;dx++){
         const x=(cx+dx+gcols)%gcols, y=(cy+dy+grows)%grows;
-        if(Math.hypot(dx,dy)*CELL<r && Math.random()<0.4) grid[gidx(x,y)] = 0;
+        if(Math.hypot(dx,dy)*CELL<r && rand()<0.4) grid[gidx(x,y)] = 0;
       }
     }
   }
@@ -309,9 +310,9 @@
   function addAgent(type,x,y){
     agents.push({
       type, x, y,
-      angle: Math.random()*Math.PI*2,
-      wander: Math.random()*1000,
-      id: Math.random().toString(36).slice(2),
+      angle: rand()*Math.PI*2,
+      wander: rand()*1000,
+      id: rand().toString(36).slice(2),
       isPanicking: false,
       _stuckTimer: 0,
       _lastCheckX: x,
@@ -1053,10 +1054,10 @@
         if(agent._spawnCooldown <= 0){
           const workers = agents.filter(a=>a.type==='ouvriere').length;
           if(antNoCapacityLimit || workers < antCarryingCapacity){
-            const ang = Math.random()*Math.PI*2;
+            const ang = rand()*Math.PI*2;
             addAgent('ouvriere', agent.x+Math.cos(ang)*20, agent.y+Math.sin(ang)*20);
           }
-          agent._spawnCooldown = 4 + Math.random()*3;
+          agent._spawnCooldown = 4 + rand()*3;
         }
       }
 
@@ -1202,7 +1203,7 @@
           // virage d'un couloir complexe — le délai ci-dessous n'est qu'un filet de sécurité.
           agent._escapeUntil = t + 6;
           agent._escapeStartX = agent.x; agent._escapeStartY = agent.y;
-          agent._escapeSign = Math.random()<0.5 ? -1 : 1;
+          agent._escapeSign = rand()<0.5 ? -1 : 1;
         }
         agent._lastCheckX = agent.x; agent._lastCheckY = agent.y;
         agent._stuckTimer = 0;
@@ -1252,9 +1253,9 @@
       if(birthAccumulator > 1){
         birthAccumulator = 0;
         const preyCount = agents.filter(a=>a.type===preyType).length;
-        if((noCapacityLimit || preyCount < carryingCapacity) && preyCount > 0 && Math.random() < birthRate){
-          const parent = agents.filter(a=>a.type===preyType)[Math.floor(Math.random()*preyCount)];
-          addAgent(preyType, parent.x + (Math.random()-0.5)*30, parent.y + (Math.random()-0.5)*30);
+        if((noCapacityLimit || preyCount < carryingCapacity) && preyCount > 0 && rand() < birthRate){
+          const parent = agents.filter(a=>a.type===preyType)[Math.floor(rand()*preyCount)];
+          addAgent(preyType, parent.x + (rand()-0.5)*30, parent.y + (rand()-0.5)*30);
           totalBirths++;
         }
       }
@@ -1297,7 +1298,7 @@
                   if(Math.hypot(other2.x-prey.x, other2.y-prey.y) < 45) neighborCount++;
                 });
                 const captureProb = 1 / (1 + neighborCount*confusionStrength);
-                if(Math.random() < captureProb){
+                if(rand() < captureProb){
                   toEat.add(prey);
                   predator._hunger = 0;
                   if(neighborCount < 3) edgeCaptures++; else interiorCaptures++;
@@ -1317,7 +1318,7 @@
             if(d<0.0001){ d=0.0001; }
             const nx=dx/d, ny=dy/d;
             // léger angle de glissement aléatoire : évite que deux agents restent bloqués nez-à-nez
-            const jitter=(Math.random()-0.5)*0.6;
+            const jitter=(rand()-0.5)*0.6;
             const cs=Math.cos(jitter), sn=Math.sin(jitter);
             const jnx=nx*cs-ny*sn, jny=nx*sn+ny*cs;
             // La reine a une masse effectivement infinie : jamais déplacée, même percutée.
@@ -1807,22 +1808,22 @@
       refuge = {x: worldW*0.85, y: worldH*0.15, r:55};
     } else if(scenario==='poisson'){
       for(let i=0;i<14;i++){
-        addAgent('poisson', worldW*0.5+(Math.random()-0.5)*220, worldH*0.5+(Math.random()-0.5)*220);
+        addAgent('poisson', worldW*0.5+(rand()-0.5)*220, worldH*0.5+(rand()-0.5)*220);
       }
       addAgent('predateur', worldW*0.15, worldH*0.15);
     } else if(scenario==='foule'){
       exits.push({x: worldW*0.92, y: worldH*0.5, r:22});
       for(let i=0;i<18;i++){
-        addAgent('pieton', worldW*0.15+Math.random()*worldW*0.5, worldH*0.15+Math.random()*worldH*0.7);
+        addAgent('pieton', worldW*0.15+rand()*worldW*0.5, worldH*0.15+rand()*worldH*0.7);
       }
     } else {
       addAgent('reine', worldW*0.5, worldH*0.5);
       for(let i=0;i<6;i++){
-        const ang = Math.random()*Math.PI*2;
+        const ang = rand()*Math.PI*2;
         addAgent('ouvriere', worldW*0.5+Math.cos(ang)*30, worldH*0.5+Math.sin(ang)*30);
       }
       for(let i=0;i<2;i++){
-        const ang = Math.random()*Math.PI*2;
+        const ang = rand()*Math.PI*2;
         addAgent('eclaireuse', worldW*0.5+Math.cos(ang)*30, worldH*0.5+Math.sin(ang)*30);
       }
       addAgent('soldat', worldW*0.5+40, worldH*0.5);
@@ -2096,8 +2097,8 @@
     const found = findAgentNear(x,y);
     if(found){ selectAgent(found.id); return; }
     for(let i=0;i<placeCount;i++){
-      const ox = placeCount>1 ? (Math.random()-0.5)*50 : 0;
-      const oy = placeCount>1 ? (Math.random()-0.5)*50 : 0;
+      const ox = placeCount>1 ? (rand()-0.5)*50 : 0;
+      const oy = placeCount>1 ? (rand()-0.5)*50 : 0;
       addAgent(selectedType, x+ox, y+oy);
     }
   });
