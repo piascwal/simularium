@@ -34,18 +34,21 @@ Cette étiquette est visible directement dans le menu de chaque scénario.
 
 **En ligne : [piascwal.github.io/simularium](https://piascwal.github.io/simularium/)**
 
-Ou en local — le tout tient dans un seul fichier HTML autonome, sans
-dépendance ni build :
+Ou en local :
 
 ```bash
-# ouvre simplement index.html dans un navigateur
+npm install
+npm run dev
 ```
 
 ## État du projet
 
-Le prototype actuel est volontairement un monofichier. Une réécriture est
-prévue pour découper le moteur de simulation (indépendant du DOM), le rendu
-et l'interface, avec pour objectif une version web **et** mobile.
+Le moteur de simulation vit encore dans un seul module (`src/main.ts`),
+hérité du prototype monofichier d'origine. Le projet utilise maintenant
+Vite + TypeScript et se déploie via GitHub Actions, en préparation d'un
+découpage progressif en modules `core` (simulation, sans DOM) / `render`
+(canvas) / `ui` (interface), avec pour objectif une version web **et**
+mobile (Capacitor).
 
 ## Licence
 
