@@ -4,6 +4,7 @@
 import { rand } from './core/rng';
 import { MENU_BAR_H, CELL, PCELL, DIST_CELL, AGENT_CELL, OBSTACLE_DRAW_SPACING } from './core/constants';
 import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry';
+import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } from './core/grid/conway';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -13,7 +14,7 @@ import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry'
   function updateWorldSize(){
     worldW = W*zoneScale;
     worldH = H*zoneScale;
-    initGrid();
+    initGrid(worldW, worldH);
     initPheromoneGrid();
     maybeRecomputeNestField();
   }
@@ -27,16 +28,7 @@ import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry'
   window.addEventListener('resize', resize);
 
   // ---------- Grille de Conway ----------
-  let gcols=0, grows=0, grid=null, gage=null;
-  function initGrid(){
-    if(worldW<=0 || worldH<=0) return;
-    gcols = Math.max(1, Math.ceil(worldW/CELL));
-    grows = Math.max(1, Math.ceil(worldH/CELL));
-    grid = new Uint8Array(gcols*grows);
-    gage = new Float32Array(gcols*grows);
-    for(let i=0;i<grid.length;i++) grid[i] = rand()<0.16 ? 1 : 0;
-  }
-  function gidx(x,y){ return y*gcols+x; }
+  // initGrid / gidx / stepConway / disturbGridAt : voir core/grid/conway.ts
 
   // ---------- Obstacles en polyligne (tracé libre + épaisseur réglable) ----------
   // closestPointOnSegment / closestPointOnWall : voir core/grid/geometry.ts
@@ -140,40 +132,6 @@ import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry'
     evaporatePheromoneField(pherReturn, dt, 0.15);
     evaporatePheromoneField(pherSearch, dt, 0.05);
   }
-  function stepConway(){
-    if(!grid) return;
-    const next = new Uint8Array(gcols*grows);
-    for(let y=0;y<grows;y++){
-      for(let x=0;x<gcols;x++){
-        let n=0;
-        for(let dy=-1;dy<=1;dy++){
-          for(let dx=-1;dx<=1;dx++){
-            if(dx===0&&dy===0) continue;
-            const nx=(x+dx+gcols)%gcols, ny=(y+dy+grows)%grows;
-            n += grid[gidx(nx,ny)];
-          }
-        }
-        const alive = grid[gidx(x,y)];
-        next[gidx(x,y)] = alive ? (n===2||n===3?1:0) : (n===3?1:0);
-      }
-    }
-    for(let i=0;i<next.length;i++){
-      gage[i] = next[i] ? Math.min(1, gage[i]+0.18) : 0;
-    }
-    grid = next;
-  }
-  function disturbGridAt(px,py,r){
-    if(!grid) return;
-    const cx = Math.floor(px/CELL), cy = Math.floor(py/CELL);
-    const cr = Math.ceil(r/CELL);
-    for(let dy=-cr;dy<=cr;dy++){
-      for(let dx=-cr;dx<=cr;dx++){
-        const x=(cx+dx+gcols)%gcols, y=(cy+dy+grows)%grows;
-        if(Math.hypot(dx,dy)*CELL<r && rand()<0.4) grid[gidx(x,y)] = 0;
-      }
-    }
-  }
-
   // ---------- Grille spatiale des agents (accélère les requêtes de voisinage) ----------
   // Sans elle, "plus proche de type X" et "voisins dans un rayon" scannent tout le tableau
   // `agents` à chaque appel — ça devient O(n²) par frame et c'est ça qui lague dès quelques
