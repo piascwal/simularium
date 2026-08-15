@@ -7,6 +7,7 @@ import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry'
 import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } from './core/grid/conway';
 import { pcols, prows, pidx, pherReturn, pherSearch, initPheromoneGrid, depositPheromone, samplePheromone, evaporatePheromone } from './core/grid/pheromone';
 import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDistance';
+import { buildAgentGrid, forEachNearby, nearestBy } from './core/grid/agentSpatialHash';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -46,76 +47,8 @@ import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDis
   // initPheromoneGrid / pidx / depositPheromone / samplePheromone / evaporatePheromone :
   // voir core/grid/pheromone.ts
   // ---------- Grille spatiale des agents (accélère les requêtes de voisinage) ----------
-  // Sans elle, "plus proche de type X" et "voisins dans un rayon" scannent tout le tableau
-  // `agents` à chaque appel — ça devient O(n²) par frame et c'est ça qui lague dès quelques
-  // centaines d'agents, pas le rendu. Reconstruite à la demande (une fois par phase de calcul),
-  // elle limite chaque requête aux cellules proches du point interrogé.
-  let agentGrid = null;
-  function buildAgentGrid(){
-    const cols = Math.max(1, Math.ceil(worldW/AGENT_CELL));
-    const rows = Math.max(1, Math.ceil(worldH/AGENT_CELL));
-    const buckets = new Map();
-    for(let i=0;i<agents.length;i++){
-      const a = agents[i];
-      a._gidx = i; // ordre stable, sert à ne traiter chaque paire qu'une seule fois (collisions)
-      const gx = Math.min(cols-1, Math.max(0, Math.floor(a.x/AGENT_CELL)));
-      const gy = Math.min(rows-1, Math.max(0, Math.floor(a.y/AGENT_CELL)));
-      const key = gy*cols+gx;
-      let arr = buckets.get(key);
-      if(!arr){ arr=[]; buckets.set(key,arr); }
-      arr.push(a);
-    }
-    agentGrid = {cols, rows, buckets};
-  }
-  // Appelle cb(other) pour chaque agent dont la cellule chevauche le carré [x±radius,y±radius].
-  // Rectangle englobant, pas un vrai disque : au(x) appelant(s) de refaire le test de distance exact.
-  function forEachNearby(x,y,radius,cb){
-    if(!agentGrid) return;
-    const {cols,rows,buckets} = agentGrid;
-    const minGx = Math.max(0, Math.floor((x-radius)/AGENT_CELL));
-    const maxGx = Math.min(cols-1, Math.floor((x+radius)/AGENT_CELL));
-    const minGy = Math.max(0, Math.floor((y-radius)/AGENT_CELL));
-    const maxGy = Math.min(rows-1, Math.floor((y+radius)/AGENT_CELL));
-    for(let gy=minGy; gy<=maxGy; gy++){
-      for(let gx=minGx; gx<=maxGx; gx++){
-        const arr = buckets.get(gy*cols+gx);
-        if(!arr) continue;
-        for(let k=0;k<arr.length;k++) cb(arr[k]);
-      }
-    }
-  }
-  // Voisin le plus proche satisfaisant `match`, par anneaux de cellules croissants autour de
-  // l'agent — s'arrête un anneau après le premier candidat trouvé (marge suffisante tant que
-  // les rayons de recherche restent du même ordre de grandeur qu'AGENT_CELL, ce qui est le cas
-  // ici). maxRadius optionnel : au-delà, renvoie null comme si aucun candidat n'existait.
-  function nearestBy(agent, match, maxRadius){
-    if(!agentGrid) return null;
-    const {cols,rows,buckets} = agentGrid;
-    const cx = Math.min(cols-1, Math.max(0, Math.floor(agent.x/AGENT_CELL)));
-    const cy = Math.min(rows-1, Math.max(0, Math.floor(agent.y/AGENT_CELL)));
-    const cap = maxRadius || Math.max(worldW,worldH);
-    const maxRing = Math.ceil(cap/AGENT_CELL) + 1;
-    let best=null, bd=Infinity, foundRing=-1;
-    for(let ring=0; ring<=maxRing; ring++){
-      if(foundRing>=0 && ring>foundRing+1) break;
-      const gxMin=cx-ring, gxMax=cx+ring, gyMin=cy-ring, gyMax=cy+ring;
-      for(let gy=Math.max(0,gyMin); gy<=Math.min(rows-1,gyMax); gy++){
-        for(let gx=Math.max(0,gxMin); gx<=Math.min(cols-1,gxMax); gx++){
-          if(ring>0 && gx>gxMin && gx<gxMax && gy>gyMin && gy<gyMax) continue; // intérieur déjà vu
-          const arr = buckets.get(gy*cols+gx);
-          if(!arr) continue;
-          for(const other of arr){
-            if(other===agent || !match(other)) continue;
-            const d = Math.hypot(other.x-agent.x, other.y-agent.y);
-            if(d<bd){ bd=d; best=other; }
-          }
-        }
-      }
-      if(best && foundRing<0) foundRing = ring;
-    }
-    if(best && bd>cap) return null;
-    return best ? {a:best, d:bd} : null;
-  }
+  // buildAgentGrid / forEachNearby / nearestBy : voir core/grid/agentSpatialHash.ts
+  function rebuildAgentGrid(){ buildAgentGrid(agents, worldW, worldH); }
 
   // ---------- Agents ----------
   const SCENARIO_TYPES = {
@@ -472,7 +405,7 @@ import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDis
     t += dt;
     evaporatePheromone(dt);
     ageCorpses(dt);
-    buildAgentGrid();
+    rebuildAgentGrid();
     // Reine mise en cache une fois par frame : appeler agents.find() depuis chaque fourmi
     // (comme avant) redevient O(n) par fourmi, donc O(n²) au global sur une grosse colonie.
     const queenRef = scenario==='ants' ? agents.find(a=>a.type==='reine') : null;
@@ -1120,7 +1053,7 @@ import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDis
     // Grille reconstruite une seule fois pour les 3 itérations de relaxation : chaque correction
     // ne déplace un agent que de quelques pixels, bien moins que la taille de cellule — rester sur
     // la même grille pour les 3 passes reste donc correct et évite de la reconstruire à chaque fois.
-    buildAgentGrid();
+    rebuildAgentGrid();
     const COLLISION_SEARCH_RADIUS = 30; // > (rayon max d'un agent × 2 + marge de fusion de 2)
     for(let iter=0; iter<iterations; iter++){
       for(let i=0;i<agents.length;i++){
