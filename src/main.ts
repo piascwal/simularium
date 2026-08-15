@@ -2,13 +2,14 @@
 // Corps du moteur historique (monofichier), déplacé verbatim ici en Phase 0.
 // Sera découpé en modules typés core/render/ui dans la Phase 1 (voir le plan de migration).
 import { rand } from './core/rng';
+import { MENU_BAR_H, CELL, PCELL, DIST_CELL, AGENT_CELL, OBSTACLE_DRAW_SPACING } from './core/constants';
+import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
   let W=0, H=0, DPR=1;
   let zoneScale = 1, worldW=0, worldH=0;
-  const MENU_BAR_H = 34;
-  
+
   function updateWorldSize(){
     worldW = W*zoneScale;
     worldH = H*zoneScale;
@@ -26,7 +27,6 @@ import { rand } from './core/rng';
   window.addEventListener('resize', resize);
 
   // ---------- Grille de Conway ----------
-  const CELL = 20;
   let gcols=0, grows=0, grid=null, gage=null;
   function initGrid(){
     if(worldW<=0 || worldH<=0) return;
@@ -39,29 +39,12 @@ import { rand } from './core/rng';
   function gidx(x,y){ return y*gcols+x; }
 
   // ---------- Obstacles en polyligne (tracé libre + épaisseur réglable) ----------
-  function closestPointOnSegment(px,py,p1,p2){
-    const dx=p2.x-p1.x, dy=p2.y-p1.y;
-    const lenSq=dx*dx+dy*dy;
-    let t = lenSq>0 ? ((px-p1.x)*dx+(py-p1.y)*dy)/lenSq : 0;
-    t = Math.max(0, Math.min(1, t));
-    return {x:p1.x+t*dx, y:p1.y+t*dy};
-  }
-  function closestPointOnWall(px,py,points){
-    if(points.length===1) return points[0];
-    let best=null, bestD=Infinity;
-    for(let i=0;i<points.length-1;i++){
-      const cp = closestPointOnSegment(px,py,points[i],points[i+1]);
-      const d = Math.hypot(px-cp.x, py-cp.y);
-      if(d<bestD){ bestD=d; best=cp; }
-    }
-    return best;
-  }
+  // closestPointOnSegment / closestPointOnWall : voir core/grid/geometry.ts
 
   // ---------- Champ de distances au nid (colonie de fourmis) ----------
   // Primitive "grilleDistanceNid" (adapted, principe du flood-fill/BFS en robotique mobile) :
   // calculé une fois (pas par agent, pas par frame), en tenant compte des murs — remplace la
   // ligne droite comme boussole de retour, capable de négocier un vrai labyrinthe à boucles.
-  const DIST_CELL = 24;
   let nestDistField = null, distCols = 0, distRows = 0;
 
   function computeNestDistanceField(){
@@ -122,7 +105,6 @@ import { rand } from './core/rng';
   // ---------- Phéromones (colonie de fourmis) ----------
   // Deux pistes distinctes : "retour" (recrutement établi, Deneubourg et al. 1990) et
   // "recherche" (marquage d'exploration, extrapolation — voir primitive marquageExploration).
-  const PCELL = 22;
   let pcols=0, prows=0, pherReturn=null, pherSearch=null;
   function initPheromoneGrid(){
     if(worldW<=0 || worldH<=0) return;
@@ -197,7 +179,6 @@ import { rand } from './core/rng';
   // `agents` à chaque appel — ça devient O(n²) par frame et c'est ça qui lague dès quelques
   // centaines d'agents, pas le rendu. Reconstruite à la demande (une fois par phase de calcul),
   // elle limite chaque requête aux cellules proches du point interrogé.
-  const AGENT_CELL = 70;
   let agentGrid = null;
   function buildAgentGrid(){
     const cols = Math.max(1, Math.ceil(worldW/AGENT_CELL));
@@ -1933,7 +1914,6 @@ import { rand } from './core/rng';
   let lastDrawPoint = null;
   let currentWall = null;
   let obstacleThickness = 20;
-  const OBSTACLE_DRAW_SPACING = 14; // distance min. entre deux points ajoutés au tracé pendant le glisser
 
   function pointerWorldPos(e){
     const rect = canvas.getBoundingClientRect();
