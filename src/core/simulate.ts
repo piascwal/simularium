@@ -344,6 +344,9 @@ export function updateAgents(
           const d = Math.hypot(ex.x-agent.x, ex.y-agent.y);
           if(d<bdE){ bdE=d; nearestExit=ex; }
         }
+        // Direction vers la sortie, consciente des murs — calculée une fois ici, réutilisée par
+        // la panique ci-dessous (au lieu d'une fuite en ligne droite qui, elle, les ignore).
+        let exitAngle: number | null = null;
         if(nearestExit){
           if(exitRemovesAgents && bdE < nearestExit.r){
             toEvacuate.push(agent);
@@ -362,10 +365,12 @@ export function updateAgents(
               const v = sampleExitDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
               if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
             }
+            exitAngle = bestA;
             desiredX += Math.cos(bestA)*1.2; desiredY += Math.sin(bestA)*1.2; hasDesire=true;
           } else {
             const dx=nearestExit.x-agent.x, dy=nearestExit.y-agent.y;
             const d=Math.hypot(dx,dy)||1;
+            exitAngle = Math.atan2(dy,dx);
             desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
           }
         }
@@ -392,9 +397,20 @@ export function updateAgents(
           }
           if(nearestAlarm && bdA < panicRadius){
             agent.isPanicking = true;
-            const dx = agent.x-nearestAlarm.x, dy = agent.y-nearestAlarm.y;
-            const d = Math.hypot(dx,dy)||1;
-            desiredX += (dx/d)*12.0; desiredY += (dy/d)*12.0; hasDesire=true;
+            if(exitAngle !== null){
+              // La panique amplifie l'urgence vers la sortie (déjà consciente des murs) plutôt que
+              // d'ajouter une fuite en ligne droite depuis l'alarme qui les ignorerait — sinon un
+              // piéton pris entre l'alarme et un mur reste bloqué au lieu de continuer vers la
+              // sortie. Cohérent avec Helbing, Farkas & Vicsek 2000 : la panique amplifie la
+              // vitesse désirée vers la sortie, ce n'est pas un nouveau vecteur de fuite aveugle.
+              desiredX += Math.cos(exitAngle)*10.0; desiredY += Math.sin(exitAngle)*10.0; hasDesire=true;
+            } else {
+              // Aucune sortie sur la scène pour guider la fuite : repli sur la ligne droite
+              // depuis l'alarme, seule information disponible.
+              const dx = agent.x-nearestAlarm.x, dy = agent.y-nearestAlarm.y;
+              const d = Math.hypot(dx,dy)||1;
+              desiredX += (dx/d)*12.0; desiredY += (dy/d)*12.0; hasDesire=true;
+            }
           }
         }
       }
