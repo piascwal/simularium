@@ -756,6 +756,16 @@ export function updateAgents(
           const escapedDist = Math.hypot(agent.x-agent._escapeStartX, agent.y-agent._escapeStartY!);
           if(escapedDist > 45) agent._escapeUntil = 0;
         }
+        // Boucle détectée (rotation cumulée ~ un tour complet) sans avoir progressé : certaines
+        // géométries locales (extrémité de mur, angle concave...) peuvent piéger le suivi de
+        // tangente malgré la poussée vers l'objectif ajoutée plus bas. Plutôt que d'attendre
+        // le délai de sécurité de 6s, on force l'essai dans l'autre sens dès qu'un tour complet
+        // est détecté, et on redémarre la fenêtre de progrès depuis la position actuelle.
+        if(agent._escapeUntil && Math.abs(agent._escapeAngleAccum||0) > 5.5){
+          agent._escapeSign = -(agent._escapeSign||1);
+          agent._escapeAngleAccum = 0;
+          agent._escapeStartX = agent.x; agent._escapeStartY = agent.y;
+        }
       }
       if(agent._escapeUntil && t < agent._escapeUntil){
         let bdO=Infinity, obsCp=null;
@@ -810,7 +820,16 @@ export function updateAgents(
           
           if(agent.isPanicking) turnRate = 18.0 * dt;
         }
-        agent.angle += Math.max(-turnRate, Math.min(turnRate, diff));
+        const turnDelta = Math.max(-turnRate, Math.min(turnRate, diff));
+        agent.angle += turnDelta;
+        // Cumul de rotation NETTE (signée, pas la somme des valeurs absolues) pendant un
+        // échappement actif : sert à détecter une boucle complétée plus bas. La valeur absolue
+        // confondrait un vrai tour complet avec un simple zigzag/bruit de collision, qui accumule
+        // aussi une grosse somme sans jamais vraiment tourner en rond (les virages en sens
+        // opposés s'annulent avec la version signée, mais pas avec la valeur absolue).
+        if(agent._escapeUntil && t < agent._escapeUntil){
+          agent._escapeAngleAccum = (agent._escapeAngleAccum||0) + turnDelta;
+        }
       }
 
       let currentSpeed = speed * (agent.type==='chasseur'?1.08 : agent.type==='fugitif'?1.15 : agent.type==='predateur'?1.08 : agent.type==='poisson'?1.15 : agent.type==='ouvriere'?0.85 : agent.type==='eclaireuse'?1.05 : agent.type==='soldat'?0.95 : agent.type==='reine'?0 : 1.0);
@@ -889,6 +908,7 @@ export function updateAgents(
           // virage d'un couloir complexe — le délai ci-dessous n'est qu'un filet de sécurité.
           agent._escapeUntil = t + 6;
           agent._escapeStartX = agent.x; agent._escapeStartY = agent.y;
+          agent._escapeAngleAccum = 0;
           // Sens de contournement : suit la tangente qui rapproche le plus de l'objectif (champ de
           // distance) plutôt qu'un tirage à pile ou face — sinon un contournement sur deux part
           // brièvement dans le mauvais sens avant de se corriger. Repli sur le tirage aléatoire si

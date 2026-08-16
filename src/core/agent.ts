@@ -44,6 +44,7 @@ export interface Agent {
   _escapeStartX?: number;
   _escapeStartY?: number;
   _escapeSign?: number;
+  _escapeAngleAccum?: number;
   // Colonie de fourmis : suit une piste de phéromone détectée
   _followingTrail?: boolean;
 }
