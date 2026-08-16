@@ -372,8 +372,18 @@ export function updateAgents(
               const v = sampleExitDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
               if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
             }
-            exitAngle = bestA;
-            desiredX += Math.cos(bestA)*1.2; desiredY += Math.sin(bestA)*1.2; hasDesire=true;
+            // Lissage (moyenne mobile du vecteur, pas de l'angle brut) : bestA est rééchantillonné
+            // chaque frame autour du cap courant, qui varie lui-même beaucoup dans une foule dense
+            // (bousculades) — sans lissage, la direction visée change violemment d'une frame à
+            // l'autre. Peu gênant tant que la force reste modérée (1.2), mais devient une
+            // dangereuse girouette une fois amplifiée en panique (voir plus bas), d'où des piétons
+            // qui semblent partir "n'importe où".
+            const rawDx = Math.cos(bestA), rawDy = Math.sin(bestA);
+            const smDx = (agent._smoothExitDx ?? rawDx) * 0.8 + rawDx * 0.2;
+            const smDy = (agent._smoothExitDy ?? rawDy) * 0.8 + rawDy * 0.2;
+            agent._smoothExitDx = smDx; agent._smoothExitDy = smDy;
+            exitAngle = Math.atan2(smDy, smDx);
+            desiredX += smDx*1.2; desiredY += smDy*1.2; hasDesire=true;
           } else {
             const dx=nearestExit.x-agent.x, dy=nearestExit.y-agent.y;
             const d=Math.hypot(dx,dy)||1;
@@ -411,7 +421,10 @@ export function updateAgents(
               // piéton pris entre l'alarme et un mur reste bloqué au lieu de continuer vers la
               // sortie. Cohérent avec Helbing, Farkas & Vicsek 2000 : la panique amplifie la
               // vitesse désirée vers la sortie, ce n'est pas un nouveau vecteur de fuite aveugle.
-              desiredX += Math.cos(exitAngle)*10.0; desiredY += Math.sin(exitAngle)*10.0; hasDesire=true;
+              // Poids modéré (pas 10x comme la fuite en ligne droite) : même lissée, la direction
+              // peut encore changer d'une frame à l'autre en foule dense — l'amplifier trop fort
+              // transforme le moindre ajustement de cap en embardée visible.
+              desiredX += Math.cos(exitAngle)*4.0; desiredY += Math.sin(exitAngle)*4.0; hasDesire=true;
             } else {
               // Aucune sortie sur la scène pour guider la fuite : repli sur la ligne droite
               // depuis l'alarme, seule information disponible.

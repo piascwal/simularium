@@ -18,6 +18,9 @@ export interface Agent {
   _lastCheckY: number;
   _lastCheckGoalDist?: number;
   _stuckStreak?: number;
+  // Foule humaine : lissage de la direction vers la sortie (voir simulate.ts)
+  _smoothExitDx?: number;
+  _smoothExitDy?: number;
   _carryingFood: boolean;
   _carryingCorpse: boolean;
   _spawnCooldown: number;
