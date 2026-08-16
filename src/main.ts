@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 // Corps du moteur historique (monofichier), déplacé verbatim ici en Phase 0.
 // Sera découpé en modules typés core/render/ui dans la Phase 1 (voir le plan de migration).
 import { rand } from './core/rng';
@@ -21,9 +21,19 @@ import { applyScenarioVisibility as applyScenarioVisibilityCore, guardRangeFromS
 import { buildTypeButtonsHtml as buildTypeButtonsHtmlCore } from './ui/toolbar';
 import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from './ui/sliders';
 import { createLoopState as createLoopStateCore, createLoop as createLoopCore } from './ui/loop';
+import type { Agent, FoodSource, Exit, Alarm, Corpse } from './core/agent';
+import type { ScenarioId, AgentTypeDef, Obstacle, Point } from './core/types';
+
+// Raccourci typé pour document.getElementById : tous les ids référencés ici sont
+// connus (fixés dans index.html), donc l'assertion est sans risque runtime — évite
+// de re-vérifier `!== null` à chaque site d'appel dans tout ce fichier de câblage DOM.
+function byId<T extends HTMLElement = HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+
 (function(){
-  const canvas = document.getElementById('cv');
-  const ctx = canvas.getContext('2d');
+  const canvas = byId<HTMLCanvasElement>('cv');
+  const ctx = canvas.getContext('2d')!;
   let W=0, H=0, DPR=1;
   let zoneScale = 1, worldW=0, worldH=0;
 
@@ -64,23 +74,23 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
 
   // ---------- Agents ----------
   // SCENARIO_TYPES : voir core/scenarios/*.ts
-  let scenario = 'heider';
-  let TYPES = SCENARIO_TYPES[scenario];
-  let agents = [];
-  let refuge = null;
-  let obstacles = [];
-  let food = [];       // colonie de fourmis : {x,y,r,qty}
-  let exits = [];      // foule humaine : {x,y,r} — sorties recherchées par les piétons
-  let alarms = [];     // foule humaine : {x,y,r} — déclenche la panique à proximité
+  let scenario: ScenarioId = 'heider';
+  let TYPES: Record<string, AgentTypeDef> = SCENARIO_TYPES[scenario];
+  let agents: Agent[] = [];
+  let refuge: (Point & { r: number }) | null = null;
+  let obstacles: Obstacle[] = [];
+  let food: FoodSource[] = [];       // colonie de fourmis : {x,y,r,qty}
+  let exits: Exit[] = [];      // foule humaine : {x,y,r} — sorties recherchées par les piétons
+  let alarms: Alarm[] = [];     // foule humaine : {x,y,r} — déclenche la panique à proximité
   let antCarryingCapacity = 26;
   let antNoCapacityLimit = false;
-  let corpses = []; // {x,y,age} — cadavres en attente d'évacuation (nécrophorèse)
+  let corpses: Corpse[] = []; // {x,y,age} — cadavres en attente d'évacuation (nécrophorèse)
   function getMidden(){ return getMiddenCore(worldW, worldH); }
-  function ageCorpses(dt){
+  function ageCorpses(dt: number){
     corpses = ageCorpsesCore(corpses, dt);
   }
 
-  function addAgent(type,x,y){
+  function addAgent(type: string, x: number, y: number){
     agents.push(createAgent(type, x, y, rand));
   }
 
@@ -129,7 +139,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
 
 
   function renderPrimitiveBadges(){
-    const el = document.getElementById('primitiveBadges');
+    const el = byId('primitiveBadges');
     if(!el) return;
     const ids = getActivePrimitiveIds();
     el.innerHTML = ids.map(id=>{
@@ -150,7 +160,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   // migration) : on lui passe un instantané des variables locales concernées dans
   // un objet SimulationState, puis on réécrit ici celles qu'elle a réassignées
   // (un import ne peut pas être réassigné par le module qui l'importe).
-  function updateAgents(dt, perception, forceMag, speed, panicRadius){
+  function updateAgents(dt: number, perception: number, forceMag: number, speed: number, panicRadius: number){
     const state = {
       agents, corpses, obstacles, food, exits, alarms, refuge,
       scenario, TYPES, worldW, worldH, zoneScale, t,
@@ -193,14 +203,14 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   // réassignées directement).
   const loopState = createLoopStateCore();
   const loop = createLoopCore(loopState, {
-    getSliderValue: (id) => +document.getElementById(id).value,
+    getSliderValue: (id: string) => +byId<HTMLInputElement>(id).value,
     updateAgents, stepConway, sampleStatsHistory, render, updateInspector, updatePopCounter,
   });
 
   // ---------- UI ----------
   let selectedType = 'chasseur';
   let placeCount = 1;
-  let mode = 'place';
+  let mode: 'place' | 'inspect' | 'refuge' | 'food' | 'exit' | 'alarm' | 'obstacle' | 'erase' = 'place';
   let loomingMode = true;
   let predationMode = false;
   let popDynamicsMode = false;
@@ -238,84 +248,84 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   let noCapacityLimit = false;
   let showPherReturn = true;
   let showPherSearch = true;
-  let boundaryMode = 'bounce'; // 'bounce' | 'perceive' | 'wrap'
+  let boundaryMode: 'bounce' | 'perceive' | 'wrap' = 'bounce';
   let avoidanceSensitivity = 1.0; // 0.3 (permet de se faufiler) à 2.0 (évitement très large)
-  let selectedAgentId = null;
-  let selectedTrail = [];
+  let selectedAgentId: string | null = null;
+  let selectedTrail: Point[] = [];
 
-  document.getElementById('loomingMode').addEventListener('change', function(){ loomingMode = this.checked; renderPrimitiveBadges(); updateConditionalRows(); });
-  document.getElementById('predationMode').addEventListener('change', function(){ predationMode = this.checked; renderPrimitiveBadges(); updateConditionalRows(); });
-  document.getElementById('popDynamicsMode').addEventListener('change', function(){
+  byId<HTMLInputElement>('loomingMode').addEventListener('change', function(){ loomingMode = this.checked; renderPrimitiveBadges(); updateConditionalRows(); });
+  byId<HTMLInputElement>('predationMode').addEventListener('change', function(){ predationMode = this.checked; renderPrimitiveBadges(); updateConditionalRows(); });
+  byId<HTMLInputElement>('popDynamicsMode').addEventListener('change', function(){
     popDynamicsMode = this.checked;
     renderPrimitiveBadges();
     updateConditionalRows();
   });
-  document.getElementById('starvation').addEventListener('input', function(){
+  byId<HTMLInputElement>('starvation').addEventListener('input', function(){
     starvationTime = +this.value;
-    document.getElementById('vStarvation').textContent = this.value + 's';
+    byId('vStarvation').textContent = this.value + 's';
   });
-  document.getElementById('birthRateSlider').addEventListener('input', function(){
+  byId<HTMLInputElement>('birthRateSlider').addEventListener('input', function(){
     birthRate = (+this.value)/100;
-    document.getElementById('vBirthRate').textContent = this.value + '%';
+    byId('vBirthRate').textContent = this.value + '%';
   });
-  document.getElementById('capacitySlider').addEventListener('input', function(){
+  byId<HTMLInputElement>('capacitySlider').addEventListener('input', function(){
     carryingCapacity = +this.value;
-    document.getElementById('vCapacity').textContent = this.value;
+    byId('vCapacity').textContent = this.value;
   });
-  document.getElementById('noCapacityLimit').addEventListener('change', function(){
+  byId<HTMLInputElement>('noCapacityLimit').addEventListener('change', function(){
     noCapacityLimit = this.checked;
-    document.getElementById('rowCapacity').classList.toggle('hidden', noCapacityLimit || scenario==='ants' || !popDynamicsMode);
+    byId('rowCapacity').classList.toggle('hidden', noCapacityLimit || scenario==='ants' || !popDynamicsMode);
   });
-  document.getElementById('cohesion').addEventListener('input', function(){
+  byId<HTMLInputElement>('cohesion').addEventListener('input', function(){
     cohesionWeight = (+this.value)/10;
-    document.getElementById('vCohesion').textContent = cohesionWeight.toFixed(1);
+    byId('vCohesion').textContent = cohesionWeight.toFixed(1);
   });
-  document.getElementById('alignment').addEventListener('input', function(){
+  byId<HTMLInputElement>('alignment').addEventListener('input', function(){
     alignmentWeight = (+this.value)/10;
-    document.getElementById('vAlignment').textContent = alignmentWeight.toFixed(1);
+    byId('vAlignment').textContent = alignmentWeight.toFixed(1);
   });
-  document.getElementById('separation').addEventListener('input', function(){
+  byId<HTMLInputElement>('separation').addEventListener('input', function(){
     separationWeight = (+this.value)/10;
-    document.getElementById('vSeparation').textContent = separationWeight.toFixed(1);
+    byId('vSeparation').textContent = separationWeight.toFixed(1);
   });
-  document.getElementById('confusion').addEventListener('input', function(){
+  byId<HTMLInputElement>('confusion').addEventListener('input', function(){
     confusionStrength = (+this.value)/100;
-    document.getElementById('vConfusion').textContent = this.value + '%';
+    byId('vConfusion').textContent = this.value + '%';
   });
-  document.getElementById('congestion').addEventListener('input', function(){
+  byId<HTMLInputElement>('congestion').addEventListener('input', function(){
     congestionStrength = (+this.value)/100;
-    document.getElementById('vCongestion').textContent = this.value + '%';
+    byId('vCongestion').textContent = this.value + '%';
   });
   renderPrimitiveBadges();
 
-  document.getElementById('showPherReturn').addEventListener('change', function(){ showPherReturn = this.checked; });
-  document.getElementById('showPherSearch').addEventListener('change', function(){ showPherSearch = this.checked; });
+  byId<HTMLInputElement>('showPherReturn').addEventListener('change', function(){ showPherReturn = this.checked; });
+  byId<HTMLInputElement>('showPherSearch').addEventListener('change', function(){ showPherSearch = this.checked; });
 
-  document.getElementById('antCapacitySlider').addEventListener('input', function(){
+  byId<HTMLInputElement>('antCapacitySlider').addEventListener('input', function(){
     antCarryingCapacity = +this.value;
-    document.getElementById('vAntCapacity').textContent = this.value;
+    byId('vAntCapacity').textContent = this.value;
   });
-  document.getElementById('pheromoneRangeSlider').addEventListener('input', function(){
+  byId<HTMLInputElement>('pheromoneRangeSlider').addEventListener('input', function(){
     pheromoneRange = +this.value;
-    document.getElementById('vPheromoneRange').textContent = this.value;
+    byId('vPheromoneRange').textContent = this.value;
   });
-  document.getElementById('antNoCapacityLimit').addEventListener('change', function(){
+  byId<HTMLInputElement>('antNoCapacityLimit').addEventListener('change', function(){
     antNoCapacityLimit = this.checked;
-    document.getElementById('rowAntCapacity').classList.toggle('hidden', scenario!=='ants' || antNoCapacityLimit);
+    byId('rowAntCapacity').classList.toggle('hidden', scenario!=='ants' || antNoCapacityLimit);
   });
-  document.getElementById('exitRemovesAgents').addEventListener('change', function(){
+  byId<HTMLInputElement>('exitRemovesAgents').addEventListener('change', function(){
     exitRemovesAgents = this.checked;
   });
 
   const SPEED_STEPS = [1,2,4];
-  document.getElementById('speedCycleBtn').addEventListener('click', function(){
+  byId('speedCycleBtn').addEventListener('click', function(){
     const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
     loopState.simSpeedMultiplier = SPEED_STEPS[(i+1) % SPEED_STEPS.length];
     const arrows = '⏩'.repeat(SPEED_STEPS.indexOf(loopState.simSpeedMultiplier)+1);
     this.textContent = `${arrows} Vitesse ×${loopState.simSpeedMultiplier}`;
   });
-  document.getElementById('showPopCounter').addEventListener('change', function(){
-    document.getElementById('popCounter').classList.toggle('hidden', !this.checked);
+  byId<HTMLInputElement>('showPopCounter').addEventListener('change', function(){
+    byId('popCounter').classList.toggle('hidden', !this.checked);
   });
 
   const HINT_TEXTS = {
@@ -329,31 +339,32 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
     erase: 'Touche ou glisse pour effacer un agent, un obstacle ou de la nourriture.'
   };
   function updateHintText(){
-    document.getElementById('hint').textContent = HINT_TEXTS[mode] || HINT_TEXTS.place;
+    byId('hint').textContent = HINT_TEXTS[mode] || HINT_TEXTS.place;
   }
 
   function clearToolButtons(){
-    document.getElementById('inspectBtn').classList.remove('active');
-    document.getElementById('refugeBtn').classList.remove('active');
-    document.getElementById('foodBtn').classList.remove('active');
-    document.getElementById('exitBtn').classList.remove('active');
-    document.getElementById('alarmBtn').classList.remove('active');
-    document.getElementById('obstacleBtn').classList.remove('active');
-    document.getElementById('eraseBtn').classList.remove('active');
-    document.getElementById('rowThickness').classList.add('hidden');
+    byId('inspectBtn').classList.remove('active');
+    byId('refugeBtn').classList.remove('active');
+    byId('foodBtn').classList.remove('active');
+    byId('exitBtn').classList.remove('active');
+    byId('alarmBtn').classList.remove('active');
+    byId('obstacleBtn').classList.remove('active');
+    byId('eraseBtn').classList.remove('active');
+    byId('rowThickness').classList.add('hidden');
   }
 
-  document.getElementById('inspectBtn').addEventListener('click', function(){
+  byId('inspectBtn').addEventListener('click', function(){
     mode = (mode==='inspect') ? 'place' : 'inspect'; clearToolButtons(); this.classList.toggle('active', mode==='inspect'); updateHintText();
   });
 
   // Construction du HTML des boutons : voir ui/toolbar.ts
   function renderTypeButtons(){
-    const container = document.getElementById('typesContainer');
+    const container = byId('typesContainer');
     container.innerHTML = buildTypeButtonsHtmlCore(TYPES);
     selectedType = Object.keys(TYPES)[0];
     placeCount = 1;
-    container.querySelectorAll('.type-btn').forEach(btn=>{
+    container.querySelectorAll('.type-btn').forEach((btnEl)=>{
+      const btn = btnEl as HTMLElement;
       btn.addEventListener('click', ()=>{
         if(selectedType===btn.dataset.type){
           // Reclic sur le même type déjà sélectionné : fait cycler le nombre placé par clic.
@@ -363,13 +374,14 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
           // Changement de type : on repart toujours de ×1, pour éviter d'en placer trop par erreur.
           placeCount = 1;
         }
-        container.querySelectorAll('.type-btn').forEach(b=>{
+        container.querySelectorAll('.type-btn').forEach((bEl)=>{
+          const b = bEl as HTMLElement;
           b.classList.remove('active');
-          b.querySelector('.type-btn-count').textContent = '';
+          (b.querySelector('.type-btn-count') as HTMLElement).textContent = '';
         });
         btn.classList.add('active');
-        btn.querySelector('.type-btn-count').textContent = placeCount>1 ? `×${placeCount}` : '';
-        selectedType = btn.dataset.type;
+        (btn.querySelector('.type-btn-count') as HTMLElement).textContent = placeCount>1 ? `×${placeCount}` : '';
+        selectedType = btn.dataset.type as string;
         mode = 'place'; clearToolButtons(); updateHintText();
       });
     });
@@ -415,7 +427,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
     applyScenarioVisibilityCore(scenario, antNoCapacityLimit);
   }
 
-  function switchScenario(name){
+  function switchScenario(name: ScenarioId){
     scenario = name;
     TYPES = SCENARIO_TYPES[scenario];
     reset();
@@ -431,86 +443,88 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
       // zéro pour éviter un état actif invisible et incohérent (ex. prédation qui "reste allumée").
       predationMode = false;
       popDynamicsMode = false;
-      document.getElementById('predationMode').checked = false;
-      document.getElementById('popDynamicsMode').checked = false;
+      byId<HTMLInputElement>('predationMode').checked = false;
+      byId<HTMLInputElement>('popDynamicsMode').checked = false;
     }
     renderPrimitiveBadges();
     updateConditionalRows();
 
     const scenarioLabels = {heider:'Heider-Simmel', ants:'Colonie de fourmis', poisson:'Banc de poissons', foule:'Foule humaine'};
-    document.getElementById('currentScenarioLabel').textContent = scenarioLabels[scenario];
-    document.getElementById('scenarioScreen').classList.add('hidden');
-    document.getElementById('closeScenarioScreen').classList.remove('hidden');
+    byId('currentScenarioLabel').textContent = scenarioLabels[scenario];
+    byId('scenarioScreen').classList.add('hidden');
+    byId('closeScenarioScreen').classList.remove('hidden');
   }
 
-  document.querySelectorAll('.scenario-card').forEach(btn=>{
-    btn.addEventListener('click', ()=> switchScenario(btn.dataset.scenario));
+  document.querySelectorAll('.scenario-card').forEach((btnEl)=>{
+    const btn = btnEl as HTMLElement;
+    btn.addEventListener('click', ()=> switchScenario(btn.dataset.scenario as ScenarioId));
   });
-  document.getElementById('openScenarioScreen').addEventListener('click', ()=>{
-    document.getElementById('scenarioScreen').classList.remove('hidden');
+  byId('openScenarioScreen').addEventListener('click', ()=>{
+    byId('scenarioScreen').classList.remove('hidden');
   });
-  document.getElementById('closeScenarioScreen').addEventListener('click', ()=>{
-    document.getElementById('scenarioScreen').classList.add('hidden');
+  byId('closeScenarioScreen').addEventListener('click', ()=>{
+    byId('scenarioScreen').classList.add('hidden');
   });
 
-  document.querySelectorAll('.boundary-btn').forEach(btn=>{
+  document.querySelectorAll('.boundary-btn').forEach((btnEl)=>{
+    const btn = btnEl as HTMLElement;
     btn.addEventListener('click', ()=>{
-      boundaryMode = btn.dataset.boundary;
+      boundaryMode = btn.dataset.boundary as 'bounce' | 'perceive' | 'wrap';
       document.querySelectorAll('.boundary-btn').forEach(b=>b.classList.toggle('active', b===btn));
       renderPrimitiveBadges();
     });
   });
 
-  document.getElementById('refugeBtn').addEventListener('click', function(){
+  byId('refugeBtn').addEventListener('click', function(){
     mode = (mode==='refuge') ? 'place' : 'refuge'; clearToolButtons(); this.classList.toggle('active', mode==='refuge'); updateHintText();
   });
-  document.getElementById('exitBtn').addEventListener('click', function(){
+  byId('exitBtn').addEventListener('click', function(){
     mode = (mode==='exit') ? 'place' : 'exit'; clearToolButtons(); this.classList.toggle('active', mode==='exit'); updateHintText();
   });
-  document.getElementById('alarmBtn').addEventListener('click', function(){
+  byId('alarmBtn').addEventListener('click', function(){
     mode = (mode==='alarm') ? 'place' : 'alarm'; clearToolButtons(); this.classList.toggle('active', mode==='alarm'); updateHintText();
   });
-  document.getElementById('foodBtn').addEventListener('click', function(){
+  byId('foodBtn').addEventListener('click', function(){
     mode = (mode==='food') ? 'place' : 'food'; clearToolButtons(); this.classList.toggle('active', mode==='food'); updateHintText();
   });
-  document.getElementById('obstacleBtn').addEventListener('click', function(){
+  byId('obstacleBtn').addEventListener('click', function(){
     mode = (mode==='obstacle') ? 'place' : 'obstacle'; clearToolButtons(); this.classList.toggle('active', mode==='obstacle'); updateHintText();
-    document.getElementById('rowThickness').classList.toggle('hidden', mode!=='obstacle');
+    byId('rowThickness').classList.toggle('hidden', mode!=='obstacle');
   });
-  document.getElementById('thickness').addEventListener('input', function(){
+  byId<HTMLInputElement>('thickness').addEventListener('input', function(){
     obstacleThickness = +this.value;
-    document.getElementById('vThickness').textContent = this.value + 'px';
+    byId('vThickness').textContent = this.value + 'px';
   });
-  document.getElementById('eraseBtn').addEventListener('click', function(){
+  byId('eraseBtn').addEventListener('click', function(){
     mode = (mode==='erase') ? 'place' : 'erase'; clearToolButtons(); this.classList.toggle('active', mode==='erase'); updateHintText();
   });
 
   let isDrawing = false;
-  let lastDrawPoint = null;
-  let currentWall = null;
+  let lastDrawPoint: Point | null = null;
+  let currentWall: Obstacle | null = null;
   let obstacleThickness = 20;
 
   // pointerWorldPos / eraseAt / findAgentNear : voir ui/canvasInput.ts
-  function pointerWorldPos(e){
+  function pointerWorldPos(e: PointerEvent){
     return pointerWorldPosCore(e, canvas, zoneScale);
   }
-  function eraseAt(x,y){
+  function eraseAt(x: number, y: number){
     const state = { agents, refuge, obstacles, food, exits, alarms };
     eraseAtCore(state, zoneScale, x, y);
     refuge = state.refuge;
   }
 
-  function selectAgent(id){
+  function selectAgent(id: string){
     selectedAgentId = id;
     selectedTrail = [];
-    document.getElementById('inspector').classList.remove('hidden');
+    byId('inspector').classList.remove('hidden');
   }
   function deselectAgent(){
     selectedAgentId = null;
     selectedTrail = [];
-    document.getElementById('inspector').classList.add('hidden');
+    byId('inspector').classList.add('hidden');
   }
-  document.getElementById('inspClose').addEventListener('click', deselectAgent);
+  byId('inspClose').addEventListener('click', deselectAgent);
 
   // Logique de construction du contenu (quelles lignes selon le type/l'état) : voir
   // ui/inspector.ts. Ne reste ici que la mise à jour DOM.
@@ -519,8 +533,8 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
     const a = agents.find(x=>x.id===selectedAgentId);
     if(!a){ deselectAgent(); return; } // l'agent a été mangé/retiré entre-temps
     const content = buildInspectorContentCore(a, TYPES, popDynamicsMode, starvationTime);
-    document.getElementById('inspTitle').textContent = content.title;
-    document.getElementById('inspBody').innerHTML = content.bodyHtml;
+    byId('inspTitle').textContent = content.title;
+    byId('inspBody').innerHTML = content.bodyHtml;
   }
 
   // Logique de comptage/mise en forme : voir ui/stats.ts. Ne reste ici que la mise
@@ -531,14 +545,14 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
       noCapacityLimit, carryingCapacity, exitRemovesAgents, totalEvacuated,
       predationMode, edgeCaptures, interiorCaptures,
     });
-    document.getElementById('popCounter').innerHTML = content.popCounterHtml;
+    byId('popCounter').innerHTML = content.popCounterHtml;
     if(content.confusionStatsHtml!==null){
-      document.getElementById('confusionStats').innerHTML = content.confusionStatsHtml;
+      byId('confusionStats').innerHTML = content.confusionStatsHtml;
     }
   }
 
   // ---------- Statistiques : historique des effectifs dans le temps ----------
-  let statsHistory = [];
+  let statsHistory: Record<string, number>[] = [];
 
   function sampleStatsHistory(){
     sampleStatsHistoryCore(statsHistory, agents);
@@ -546,12 +560,12 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   }
 
   function renderStatsChart(){
-    const el = document.getElementById("statsChart");
+    const el = byId("statsChart");
     if(!el) return;
     el.innerHTML = renderStatsChartHtmlCore(statsHistory, TYPES);
   }
 
-  function findAgentNear(x,y){
+  function findAgentNear(x: number, y: number){
     return findAgentNearCore(agents, TYPES, x, y);
   }
 
@@ -603,14 +617,14 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   canvas.addEventListener('pointercancel', stopDrawing);
   canvas.addEventListener('pointerleave', stopDrawing);
 
-  const panelEl = document.getElementById('panel');
-  document.getElementById('dragHandle').addEventListener('click', ()=>{ panelEl.classList.toggle('open'); });
-  document.getElementById('burgerBtn').addEventListener('click', ()=>{ panelEl.classList.toggle('open'); });
+  const panelEl = byId('panel');
+  byId('dragHandle').addEventListener('click', ()=>{ panelEl.classList.toggle('open'); });
+  byId('burgerBtn').addEventListener('click', ()=>{ panelEl.classList.toggle('open'); });
 
   // Cale le header sticky des collapses exactement sous la poignée "Menu", quelle que soit sa
   // hauteur réelle (police, densité d'écran...) — évite tout interstice où le contenu défilerait.
   function updateStickyOffset(){
-    const el = document.getElementById('dragHandle');
+    const el = byId('dragHandle');
     const marginBottom = parseFloat(getComputedStyle(el).marginBottom) || 0;
     document.documentElement.style.setProperty('--drag-handle-h', (el.offsetHeight + marginBottom)+'px');
   }
@@ -621,7 +635,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   // bas (l'overscroll classique en haut d'une liste) referme le menu entier, sans avoir à viser
   // la poignée. On ne l'arme que si le panneau était déjà au sommet au moment du contact.
   {
-    let dragStartY = null;
+    let dragStartY: number | null = null;
     panelEl.addEventListener('touchstart', (e)=>{
       dragStartY = panelEl.scrollTop <= 0 ? e.touches[0].clientY : null;
     }, {passive:true});
@@ -636,14 +650,15 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
     panelEl.addEventListener('touchend', ()=>{ dragStartY = null; });
   }
 
-  document.getElementById('playBtn').addEventListener('click', function(){
+  byId('playBtn').addEventListener('click', function(){
     loopState.running = !loopState.running;
     this.textContent = loopState.running ? '⏸ Pause' : '▶ Lancer';
     this.classList.toggle('running', loopState.running);
   });
-  document.getElementById('clearBtn').addEventListener('click', function(){
+  let clearBtnArmTimer: ReturnType<typeof setTimeout> | undefined;
+  byId('clearBtn').addEventListener('click', function(){
     if(this.dataset.armed==='1'){
-      clearTimeout(this._armTimer);
+      clearTimeout(clearBtnArmTimer);
       this.dataset.armed='0';
       this.textContent='Vider la scène';
       this.classList.remove('running');
@@ -653,7 +668,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
     this.dataset.armed='1';
     this.textContent='Confirmer ?';
     this.classList.add('running');
-    this._armTimer = setTimeout(()=>{
+    clearBtnArmTimer = setTimeout(()=>{
       this.dataset.armed='0';
       this.textContent='Vider la scène';
       this.classList.remove('running');
@@ -661,78 +676,78 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   });
 
   // Réinitialisations ciblées : ne touchent qu'à leur propre collapse, jamais aux agents en scène.
-  document.getElementById('resetConfigBtn').addEventListener('click', function(){
+  byId<HTMLInputElement>('resetConfigBtn').addEventListener('click', function(){
     loomingMode = true; predationMode = false; popDynamicsMode = false; noCapacityLimit = false;
     showPherReturn = true; showPherSearch = true; antNoCapacityLimit = false;
     boundaryMode = 'bounce'; loopState.simSpeedMultiplier = 1;
-    document.getElementById('loomingMode').checked = true;
-    document.getElementById('predationMode').checked = false;
-    document.getElementById('popDynamicsMode').checked = false;
-    document.getElementById('noCapacityLimit').checked = false;
-    document.getElementById('showPherReturn').checked = true;
-    document.getElementById('showPherSearch').checked = true;
-    document.getElementById('antNoCapacityLimit').checked = false;
-    document.querySelectorAll('.boundary-btn').forEach(b=>b.classList.toggle('active', b.dataset.boundary==='bounce'));
-    document.getElementById('speedCycleBtn').textContent = '⏩ Vitesse ×1';
+    byId<HTMLInputElement>('loomingMode').checked = true;
+    byId<HTMLInputElement>('predationMode').checked = false;
+    byId<HTMLInputElement>('popDynamicsMode').checked = false;
+    byId<HTMLInputElement>('noCapacityLimit').checked = false;
+    byId<HTMLInputElement>('showPherReturn').checked = true;
+    byId<HTMLInputElement>('showPherSearch').checked = true;
+    byId<HTMLInputElement>('antNoCapacityLimit').checked = false;
+    document.querySelectorAll('.boundary-btn').forEach(b=>b.classList.toggle('active', (b as HTMLElement).dataset.boundary==='bounce'));
+    byId('speedCycleBtn').textContent = '⏩ Vitesse ×1';
     renderPrimitiveBadges();
     updateConditionalRows();
   });
 
-  document.getElementById('resetSlidersBtn').addEventListener('click', function(){
-    const defaults = {
+  byId<HTMLInputElement>('resetSlidersBtn').addEventListener('click', function(){
+    const defaults: Record<string, number> = {
       starvation:20, birthRateSlider:15, capacitySlider:24,
       cohesion:5, alignment:7, separation:11, confusion:15,
       antCapacitySlider:26, pheromoneRangeSlider:26,
       ...SCENARIO_SLIDER_DEFAULTS[scenario]
     };
     for(const id in defaults){
-      const el = document.getElementById(id);
-      el.value = defaults[id];
+      const el = byId<HTMLInputElement>(id);
+      el.value = String(defaults[id]);
       el.dispatchEvent(new Event('input', {bubbles:true}));
     }
   });
 
   function syncLabels(){
-    document.getElementById('vPerc').textContent = document.getElementById('perception').value;
-    document.getElementById('vForce').textContent = document.getElementById('force').value;
-    document.getElementById('vSpeed').textContent = document.getElementById('speed').value;
-    document.getElementById('vPanic').textContent = document.getElementById('panicRadius').value + 'px';
-    document.getElementById('vAvoid').textContent = document.getElementById('avoidance').value + '%';
-    document.getElementById('vThickness').textContent = document.getElementById('thickness').value + 'px';
-    document.getElementById('vStarvation').textContent = document.getElementById('starvation').value + 's';
-    document.getElementById('vBirthRate').textContent = document.getElementById('birthRateSlider').value + '%';
-    document.getElementById('vCapacity').textContent = document.getElementById('capacitySlider').value;
-    document.getElementById('vAntCapacity').textContent = document.getElementById('antCapacitySlider').value;
-    document.getElementById('vPheromoneRange').textContent = document.getElementById('pheromoneRangeSlider').value;
-    document.getElementById('vCohesion').textContent = cohesionWeight.toFixed(1);
-    document.getElementById('vAlignment').textContent = alignmentWeight.toFixed(1);
-    document.getElementById('vSeparation').textContent = separationWeight.toFixed(1);
-    document.getElementById('vConfusion').textContent = document.getElementById('confusion').value + '%';
-    document.getElementById('vCongestion').textContent = document.getElementById('congestion').value + '%';
-    document.getElementById('vZone').textContent = document.getElementById('zone').value + '%';
+    byId('vPerc').textContent = byId<HTMLInputElement>('perception').value;
+    byId('vForce').textContent = byId<HTMLInputElement>('force').value;
+    byId('vSpeed').textContent = byId<HTMLInputElement>('speed').value;
+    byId('vPanic').textContent = byId<HTMLInputElement>('panicRadius').value + 'px';
+    byId('vAvoid').textContent = byId<HTMLInputElement>('avoidance').value + '%';
+    byId('vThickness').textContent = byId<HTMLInputElement>('thickness').value + 'px';
+    byId('vStarvation').textContent = byId<HTMLInputElement>('starvation').value + 's';
+    byId('vBirthRate').textContent = byId<HTMLInputElement>('birthRateSlider').value + '%';
+    byId('vCapacity').textContent = byId<HTMLInputElement>('capacitySlider').value;
+    byId('vAntCapacity').textContent = byId<HTMLInputElement>('antCapacitySlider').value;
+    byId('vPheromoneRange').textContent = byId<HTMLInputElement>('pheromoneRangeSlider').value;
+    byId('vCohesion').textContent = cohesionWeight.toFixed(1);
+    byId('vAlignment').textContent = alignmentWeight.toFixed(1);
+    byId('vSeparation').textContent = separationWeight.toFixed(1);
+    byId('vConfusion').textContent = byId<HTMLInputElement>('confusion').value + '%';
+    byId('vCongestion').textContent = byId<HTMLInputElement>('congestion').value + '%';
+    byId('vZone').textContent = byId<HTMLInputElement>('zone').value + '%';
   }
   ['perception','force','speed','panicRadius'].forEach(id=>{
-    document.getElementById(id).addEventListener('input', syncLabels);
+    byId(id).addEventListener('input', syncLabels);
   });
-  document.getElementById('avoidance').addEventListener('input', function(){
+  byId<HTMLInputElement>('avoidance').addEventListener('input', function(){
     avoidanceSensitivity = (+this.value)/100; syncLabels();
   });
-  document.getElementById('zone').addEventListener('input', function(){
+  byId<HTMLInputElement>('zone').addEventListener('input', function(){
     zoneScale = (+this.value)/100; updateWorldSize(); syncLabels();
   });
 
   // Optimisation d'interface : un slider qui n'a de sens que si son option est active
   // (ici, la zone de déclenchement du Looming) ne s'affiche que dans ce cas précis.
   function updateConditionalRows(){
-    document.getElementById('rowPanic').classList.toggle('hidden', scenario==='ants' || !loomingMode);
-    document.getElementById('rowStarvation').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
-    document.getElementById('rowBirthRate').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
-    document.getElementById('rowCapacity').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode || noCapacityLimit);
-    document.getElementById('rowNoLimit').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
+    byId('rowPanic').classList.toggle('hidden', scenario==='ants' || !loomingMode);
+    byId('rowStarvation').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
+    byId('rowBirthRate').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
+    byId('rowCapacity').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode || noCapacityLimit);
+    byId('rowNoLimit').classList.toggle('hidden', scenario!=='poisson' || !popDynamicsMode);
     const showConfusion = scenario==='poisson' && predationMode;
-    document.getElementById('rowConfusion').classList.toggle('hidden', !showConfusion);
-    document.getElementById('confusionStats').classList.toggle('hidden', !showConfusion);
-    document.getElementById('rowCongestion').classList.toggle('hidden', scenario!=='foule');
+    byId('rowConfusion').classList.toggle('hidden', !showConfusion);
+    byId('confusionStats').classList.toggle('hidden', !showConfusion);
+    byId('rowCongestion').classList.toggle('hidden', scenario!=='foule');
   }
   
   // Garde anti-scroll-accidentel : le CSS touch-action:pan-y aide pour la direction du geste,
@@ -743,7 +758,7 @@ import { createLoopState as createLoopStateCore, createLoop as createLoopCore } 
   // clairement horizontal sur le slider, qui est alors laissé libre de répondre normalement.
 
   setupCollapsibles();
-  document.querySelectorAll('#panel input[type="range"]').forEach(guardRangeFromScroll);
+  document.querySelectorAll('#panel input[type="range"]').forEach((el)=>guardRangeFromScroll(el as HTMLInputElement));
 
   syncLabels();
   updateConditionalRows();
