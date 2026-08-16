@@ -29,6 +29,34 @@ function sampleGoalDistance(x: number, y: number): number {
   return sampleNestDistance(x, y);
 }
 
+// Direction lissée vers l'objectif du scénario (nid pour les fourmis, sortie pour la foule —
+// via sampleGoalDistance, qui bascule automatiquement sur le bon champ selon le scénario actif),
+// en tenant compte des murs. Partagée entre les deux comportements : le rééchantillonnage brut
+// à 5 angles autour du cap courant est identique dans les deux cas, tout comme le risque de
+// bruit qui va avec (le cap courant varie beaucoup en foule dense ou en essaim compact). La
+// moyenne mobile porte sur le VECTEUR (pas l'angle brut, qui aurait une discontinuité à ±180°) ;
+// sa norme peut descendre sous 1 quand la direction visée change souvent d'une frame à l'autre —
+// un amortissement naturel, pas un bug, donc les appelants utilisent dx/dy tels quels plutôt que
+// de renormaliser via l'angle. Retourne null si le champ est indisponible (scénario sans champ
+// concerné, ou juste après un changement de scénario avant le premier calcul) — l'appelant se
+// replie alors sur la ligne droite vers l'objectif.
+function computeSmoothedGoalDirection(agent: Agent): { dx: number; dy: number } | null {
+  const myDist = sampleGoalDistance(agent.x, agent.y);
+  if(myDist < 0) return null;
+  const sampleD = DIST_CELL*1.4;
+  const angles = [agent.angle, agent.angle-0.5, agent.angle+0.5, agent.angle-1.1, agent.angle+1.1];
+  let bestA = agent.angle, bestV = myDist;
+  for(const ang of angles){
+    const v = sampleGoalDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
+    if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
+  }
+  const rawDx = Math.cos(bestA), rawDy = Math.sin(bestA);
+  const smDx = (agent._smoothGoalDx ?? rawDx) * 0.8 + rawDx * 0.2;
+  const smDy = (agent._smoothGoalDy ?? rawDy) * 0.8 + rawDy * 0.2;
+  agent._smoothGoalDx = smDx; agent._smoothGoalDy = smDy;
+  return { dx: smDx, dy: smDy };
+}
+
 // updateAgents() déplacé en bloc depuis le monolithe (tranche 9 du plan de migration),
 // structure interne intouchée. La fonction ne touche jamais le DOM — c'est justement
 // cette propriété qui permettra plus tard de la réutiliser telle quelle dans un
@@ -363,27 +391,10 @@ export function updateAgents(
           // — un piéton ne fonce plus tout droit dans un obstacle qui coupe la ligne directe vers
           // la sortie. Repli sur la ligne droite seulement si le champ est indisponible (ex. juste
           // après un changement de scénario, avant le premier recalcul).
-          const myDist = sampleExitDistance(agent.x, agent.y);
-          if(myDist >= 0){
-            const sampleD = DIST_CELL*1.4;
-            const angles = [agent.angle, agent.angle-0.5, agent.angle+0.5, agent.angle-1.1, agent.angle+1.1];
-            let bestA = agent.angle, bestV = myDist;
-            for(const ang of angles){
-              const v = sampleExitDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
-              if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
-            }
-            // Lissage (moyenne mobile du vecteur, pas de l'angle brut) : bestA est rééchantillonné
-            // chaque frame autour du cap courant, qui varie lui-même beaucoup dans une foule dense
-            // (bousculades) — sans lissage, la direction visée change violemment d'une frame à
-            // l'autre. Peu gênant tant que la force reste modérée (1.2), mais devient une
-            // dangereuse girouette une fois amplifiée en panique (voir plus bas), d'où des piétons
-            // qui semblent partir "n'importe où".
-            const rawDx = Math.cos(bestA), rawDy = Math.sin(bestA);
-            const smDx = (agent._smoothExitDx ?? rawDx) * 0.8 + rawDx * 0.2;
-            const smDy = (agent._smoothExitDy ?? rawDy) * 0.8 + rawDy * 0.2;
-            agent._smoothExitDx = smDx; agent._smoothExitDy = smDy;
-            exitAngle = Math.atan2(smDy, smDx);
-            desiredX += smDx*1.2; desiredY += smDy*1.2; hasDesire=true;
+          const smoothed = computeSmoothedGoalDirection(agent);
+          if(smoothed){
+            exitAngle = Math.atan2(smoothed.dy, smoothed.dx);
+            desiredX += smoothed.dx*1.2; desiredY += smoothed.dy*1.2; hasDesire=true;
           } else {
             const dx=nearestExit.x-agent.x, dy=nearestExit.y-agent.y;
             const d=Math.hypot(dx,dy)||1;
@@ -509,16 +520,12 @@ export function updateAgents(
           // principale, capable de négocier un vrai labyrinthe à boucles. Repli sur l'intégration
           // de trajet classique (Wehner & Srinivasan 1981) seulement si le champ est indisponible.
           if(queen){
-            const myDist = sampleNestDistance(agent.x, agent.y);
-            if(myDist >= 0){
-              const sampleD = DIST_CELL*1.4;
-              const angles = [agent.angle, agent.angle-0.5, agent.angle+0.5, agent.angle-1.1, agent.angle+1.1];
-              let bestA = agent.angle, bestV = myDist;
-              for(const ang of angles){
-                const v = sampleNestDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
-                if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
-              }
-              desiredX += Math.cos(bestA)*1.8; desiredY += Math.sin(bestA)*1.8; hasDesire=true;
+            const smoothed = computeSmoothedGoalDirection(agent);
+            if(smoothed){
+              // Même lissage que la foule pour la sortie (voir computeSmoothedGoalDirection) :
+              // sans lui, le retour au nid rééchantillonnait un cap frais à chaque frame autour
+              // du cap courant, lui-même bruité par les évitements/contournements en chemin.
+              desiredX += smoothed.dx*1.8; desiredY += smoothed.dy*1.8; hasDesire=true;
             } else {
               const dx=queen.x-agent.x, dy=queen.y-agent.y;
               const d=Math.hypot(dx,dy)||1;
@@ -787,8 +794,8 @@ export function updateAgents(
           // peut orbiter indéfiniment autour de ce point plutôt que de finir par s'en écarter —
           // observé en pratique (trajectoire en boucle près du bout d'un mur). Cette composante
           // casse la symétrie circulaire sans dominer le contournement lui-même.
-          if(agent._smoothExitDx !== undefined && agent._smoothExitDy !== undefined){
-            desiredX += agent._smoothExitDx*0.6; desiredY += agent._smoothExitDy*0.6;
+          if(agent._smoothGoalDx !== undefined && agent._smoothGoalDy !== undefined){
+            desiredX += agent._smoothGoalDx*0.6; desiredY += agent._smoothGoalDy*0.6;
           }
           hasDesire = true;
         } else if(hasDesire){

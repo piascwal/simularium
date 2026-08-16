@@ -18,9 +18,10 @@ export interface Agent {
   _lastCheckY: number;
   _lastCheckGoalDist?: number;
   _stuckStreak?: number;
-  // Foule humaine : lissage de la direction vers la sortie (voir simulate.ts)
-  _smoothExitDx?: number;
-  _smoothExitDy?: number;
+  // Lissage de la direction vers l'objectif du scénario (sortie pour la foule, nid pour les
+  // fourmis chargées) — voir computeSmoothedGoalDirection() dans simulate.ts
+  _smoothGoalDx?: number;
+  _smoothGoalDy?: number;
   _carryingFood: boolean;
   _carryingCorpse: boolean;
   _spawnCooldown: number;
