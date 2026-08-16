@@ -143,7 +143,9 @@ export function updateAgents(
       if (self === 'fugitif' && other === 'chasseur') return -1;
       if (self === 'fugitif' && other === 'gardien') return -0.3;
       if (self === 'fugitif' && other === 'neutre') return -0.2;
-      if (self === 'chasseur' && other === 'fugitif') return 1;
+      // chasseur → fugitif : 0 ici, géré par un bloc dédié plus bas (poursuite sans limite de
+      // distance) plutôt que par ce mécanisme générique, capé à perception.
+      if (self === 'chasseur' && other === 'fugitif') return 0;
       if (self === 'chasseur' && other === 'gardien') return -1.4;
       if (self === 'gardien' && other === 'chasseur') return 0;
       if (self === 'gardien' && other === 'fugitif') return 0;
@@ -169,14 +171,35 @@ export function updateAgents(
     // (comme avant) redevient O(n) par fourmi, donc O(n²) au global sur une grosse colonie.
     const queenRef = scenario==='ants' ? agents.find(a=>a.type==='reine') : null;
 
-    // --- pré-passe : chasseurs ---
+    // --- pré-passe : chasseurs (Heider-Simmel) ---
+    // Chasse sans limite de distance (nearest() couvre déjà toute la grille) : l'agresseur ne
+    // perd jamais la piste d'un fugitif repéré, aussi loin soit-il — cohérent avec la figure de
+    // l'agresseur acharné perçue dans l'expérience originale (Heider & Simmel 1944), plutôt
+    // qu'une portée de détection arbitraire. _fleeing affiné par la pré-passe des gardiens
+    // ci-dessous (fuite seulement si un gardien défend activement CE chasseur, pas juste "un
+    // gardien est dans les parages").
     for(const a of agents){
       if(a.type!=='chasseur') continue;
-      const fu = nearest(a,'fugitif');
-      const ga = nearest(a,'gardien');
-      a._fleeing = !!(ga && ga.d < perception);
-      a._hunting = !a._fleeing && !!(fu && fu.d < perception);
-      a._target = fu;
+      a._target = nearest(a,'fugitif');
+      a._hunting = !!a._target;
+      a._fleeing = false;
+    }
+
+    // --- pré-passe : gardiens (Heider-Simmel) ---
+    // Doit s'exécuter après la pré-passe des chasseurs (a besoin de _hunting/_target) et avant la
+    // boucle principale, pour que le chasseur visé sache dès sa propre itération qu'il doit fuir.
+    // Sans limite de distance ; choix fondé sur la proximité au fugitif attaqué (pas au chasseur)
+    // pour rester cohérent quand plusieurs fugitifs sont menacés à la fois.
+    for(const a of agents){
+      if(a.type!=='gardien') continue;
+      let bestCh: Agent | null = null, bestD = Infinity;
+      for(const other of agents){
+        if(other.type!=='chasseur' || !other._hunting || !other._target) continue;
+        const d = Math.hypot(other._target.a.x-a.x, other._target.a.y-a.y);
+        if(d<bestD){ bestD=d; bestCh=other; }
+      }
+      a._defendTarget = bestCh;
+      if(bestCh) bestCh._fleeing = true;
     }
 
     const toStarve: Agent[] = [];
@@ -370,21 +393,28 @@ export function updateAgents(
       }
 
       if(agent.type==='gardien'){
-        // Primitive "interposition" (adapted) : se place entre le chasseur en chasse et sa cible.
-        let bestCh: Agent | null = null, bestD=Infinity;
-        forEachNearbyAgents(agent.x, agent.y, perception, other=>{
-          if(other.type==='chasseur' && other._hunting){
-            const d=Math.hypot(other.x-agent.x, other.y-agent.y);
-            if(d<perception && d<bestD){ bestD=d; bestCh=other; }
-          }
-        });
-        const bc = bestCh as Agent | null;
+        // Primitive "interposition" (adapted) : se place entre le chasseur en chasse et sa cible
+        // (cible du chasseur choisie en pré-passe plus haut, sans limite de distance).
+        const bc = agent._defendTarget;
         if(bc && bc._target){
           const fu = bc._target.a;
           const mx=(bc.x+fu.x)/2, my=(bc.y+fu.y)/2;
           const dx=mx-agent.x, dy=my-agent.y;
           const d=Math.hypot(dx,dy)||1;
           desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
+        } else {
+          // Primitive "errance" (adapted) : au repos (aucun fugitif attaqué à défendre), dérive
+          // aléatoire comme les autres rôles inactifs — sans jamais trop s'éloigner du fugitif le
+          // plus proche, le gardien "montant la garde" plutôt que de dériver indéfiniment.
+          const n = Math.sin(agent.wander+t*0.6)*0.6;
+          agent.angle += n*dt;
+          const fu = nearest(agent,'fugitif');
+          const leashRadius = perception*0.8;
+          if(fu && fu.d > leashRadius){
+            const dx=fu.a.x-agent.x, dy=fu.a.y-agent.y;
+            const d=Math.hypot(dx,dy)||1;
+            desiredX += (dx/d)*1.0; desiredY += (dy/d)*1.0; hasDesire=true;
+          }
         }
       }
 
@@ -394,11 +424,24 @@ export function updateAgents(
         agent.angle += n*dt;
       }
 
-      if(agent.type==='chasseur' && !agent._hunting && !agent._fleeing){
-        // Primitive "errance" (adapted) : sans cible en vue, recherche active plutôt que ligne
-        // droite indéfinie — sinon le chasseur peut ne jamais retomber sur un fugitif hors de vue.
-        const n = Math.sin(agent.wander+t*0.6)*0.6;
-        agent.angle += n*dt;
+      if(agent.type==='chasseur'){
+        if(agent._hunting && agent._target && !agent._fleeing){
+          // Primitive "poursuivre" (established) sans limite de distance : contrairement au
+          // mécanisme générique de relation (capé à perception), le chasseur ne perd jamais la
+          // piste d'un fugitif repéré — cohérent avec la figure de l'agresseur acharné perçue
+          // dans l'expérience originale (Heider & Simmel 1944), plutôt qu'une portée de
+          // détection arbitraire.
+          const fu = agent._target.a;
+          const dx = fu.x-agent.x, dy = fu.y-agent.y;
+          const d = Math.hypot(dx,dy)||1;
+          desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
+        } else {
+          // Primitive "errance" (adapted) : sans poursuite active (aucun fugitif en scène, ou un
+          // gardien défend contre lui — priorité à la survie), recherche/dérive plutôt que ligne
+          // droite indéfinie.
+          const n = Math.sin(agent.wander+t*0.6)*0.6;
+          agent.angle += n*dt;
+        }
       }
 
       // ================= COLONIE DE FOURMIS =================

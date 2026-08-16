@@ -32,6 +32,9 @@ export function buildInspectorContent(
     lines.push(`<div>État <b>${agent._fleeing ? 'fuit le gardien' : agent._hunting ? 'chasse' : 'errance'}</b></div>`);
     if (popDynamicsMode) lines.push(`<div>Faim <b>${((agent._hunger as number) || 0).toFixed(1)}s</b> / ${starvationTime}s</div>`);
   }
+  if (agent.type === 'gardien') {
+    lines.push(`<div>État <b>${agent._defendTarget ? 'défend' : 'monte la garde'}</b></div>`);
+  }
   if (agent.type === 'predateur') {
     lines.push(`<div>État <b>${agent._hunting ? 'chasse' : 'errance'}</b></div>`);
     if (popDynamicsMode) {

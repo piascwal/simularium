@@ -26,6 +26,8 @@ export interface Agent {
   _huntMotivation?: number;
   _target?: { a: Agent; d: number } | null;
   _preyDist?: number;
+  // Gardien : chasseur actuellement défendu contre (Heider-Simmel)
+  _defendTarget?: Agent | null;
   // Rendu / inspecteur : dernière vitesse et direction désirée effectivement utilisées
   _lastSpeed?: number;
   _lastHasDesire?: boolean;
