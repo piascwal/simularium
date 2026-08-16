@@ -214,7 +214,13 @@ export function updateAgents(
     for(const agent of agents){
       let desiredX = Math.cos(agent.angle), desiredY = Math.sin(agent.angle);
       let hasDesire = false;
-      agent.isPanicking = false;
+      // L'intensité de panique retombe progressivement (~1.5s) plutôt que de s'arrêter net dès la
+      // sortie du rayon de danger — sans quoi la vitesse revient instantanément à la normale et
+      // aucune pression ne se propage dans la foule qui suit (Helbing, Farkas & Vicsek 2000 :
+      // l'agitation d'un groupe qui vient de fuir persiste un moment, c'est ce qui crée un
+      // embouteillage plus loin, pas seulement la zone de panique elle-même).
+      agent._panicIntensity = Math.max(0, (agent._panicIntensity ?? 0) - dt/1.5);
+      agent.isPanicking = agent._panicIntensity > 0.05;
 
       // Primitive "mortParFamine" (established, Lotka 1925 ; Volterra 1926) : un prédateur
       // qui ne mange pas meurt. Activable/paramétrable via le toggle "Dynamique de population".
@@ -235,6 +241,7 @@ export function updateAgents(
       // --- 1. PRIORITÉ ABSOLUE : EFFET LOOMING / FUITE DU PRÉDATEUR ---
       // Primitives : "looming" (established) déclenche "fuir" (established).
       if(loomingMode && isPreyType && nearestHunter && nearestHunter.d < panicRadius){
+        agent._panicIntensity = 1;
         agent.isPanicking = true;
         const dx = agent.x - nearestHunter.a.x;
         const dy = agent.y - nearestHunter.a.y;
@@ -396,6 +403,7 @@ export function updateAgents(
             if(d<bdA){ bdA=d; nearestAlarm=al; }
           }
           if(nearestAlarm && bdA < panicRadius){
+            agent._panicIntensity = 1;
             agent.isPanicking = true;
             if(exitAngle !== null){
               // La panique amplifie l'urgence vers la sortie (déjà consciente des murs) plutôt que
@@ -784,8 +792,11 @@ export function updateAgents(
       }
 
       let currentSpeed = speed * (agent.type==='chasseur'?1.08 : agent.type==='fugitif'?1.15 : agent.type==='predateur'?1.08 : agent.type==='poisson'?1.15 : agent.type==='ouvriere'?0.85 : agent.type==='eclaireuse'?1.05 : agent.type==='soldat'?0.95 : agent.type==='reine'?0 : 1.0);
-      if(agent.isPanicking) {
-        currentSpeed *= 1.8;
+      if(agent._panicIntensity){
+        // Proportionnel à l'intensité (qui retombe progressivement, voir plus haut) plutôt qu'un
+        // ×1.8 fixe : un agent qui vient de fuir garde un peu d'élan un moment après être sorti
+        // du danger, au lieu de retomber instantanément à vitesse normale.
+        currentSpeed *= 1 + 0.8*agent._panicIntensity;
       }
       if(agent.type==='predateur' && agent._preyDist! < 45){
         // Primitive "sursautAttaque" (established, Domenici & Blake 1997 — "fast-start"/C-start

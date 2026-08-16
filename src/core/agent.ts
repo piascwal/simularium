@@ -12,6 +12,7 @@ export interface Agent {
   wander: number;
   id: string;
   isPanicking: boolean;
+  _panicIntensity?: number;
   _stuckTimer: number;
   _lastCheckX: number;
   _lastCheckY: number;
