@@ -473,6 +473,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     byId('currentScenarioLabel').textContent = scenarioLabels[scenario];
     byId('scenarioScreen').classList.add('hidden');
     byId('closeScenarioScreen').classList.remove('hidden');
+    showFirstRunHintIfNeeded();
   }
 
   document.querySelectorAll('.scenario-card').forEach((btnEl)=>{
@@ -602,6 +603,29 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     quickMenuEl.classList.add('hidden');
   }
 
+  // Indice de découvrabilité (une fois, au tout premier scénario) : rien n'indique autrement que
+  // l'appui long (mobile) ou les raccourcis clavier (desktop) existent. try/catch : le
+  // localStorage peut être bloqué dans certaines WebView, ça ne doit jamais casser le reste.
+  const FIRST_RUN_HINT_SEEN_KEY = 'simularium_seenQuickHint';
+  const firstRunHintEl = byId('firstRunHint');
+  let firstRunHintDismissTimer: ReturnType<typeof setTimeout> | undefined;
+  function dismissFirstRunHint(){
+    clearTimeout(firstRunHintDismissTimer);
+    firstRunHintEl.classList.remove('show');
+  }
+  function showFirstRunHintIfNeeded(){
+    try{
+      if(localStorage.getItem(FIRST_RUN_HINT_SEEN_KEY)) return;
+      localStorage.setItem(FIRST_RUN_HINT_SEEN_KEY, '1');
+    } catch { return; }
+    const isTouch = window.matchMedia('(pointer: coarse)').matches;
+    firstRunHintEl.textContent = isTouch
+      ? 'Astuce : appui long sur la scène → menu rapide (lecture, vitesse, inspection).'
+      : 'Astuce : espace (lecture/pause), +/- (vitesse), i (inspection), m (menu).';
+    firstRunHintEl.classList.add('show');
+    firstRunHintDismissTimer = setTimeout(dismissFirstRunHint, 5000);
+  }
+
   // Détection d'appui long, uniquement pour les modes "un tap = une action" (place, inspect,
   // refuge, food, exit, alarm) — erase/obstacle gardent leur geste de glissement intact,
   // le maintien y sert déjà à dessiner/effacer en continu.
@@ -652,6 +676,8 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     longPressTimer = setTimeout(()=>{
       longPressTriggered = true;
       longPressTimer = undefined;
+      navigator.vibrate?.(10);
+      dismissFirstRunHint();
       if(longPressPending) openQuickMenu(longPressPending.clientX, longPressPending.clientY);
     }, LONG_PRESS_MS);
   });
@@ -701,6 +727,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     const action = resolveShortcut(e.key, activeTag);
     if(!action) return;
+    dismissFirstRunHint();
     switch(action){
       case 'toggleRun': toggleRun(); break;
       case 'speedUp': cycleSpeed(1); break;

@@ -201,6 +201,16 @@
   #popCounter .pc-row{display:flex;align-items:center;gap:6px}
   #popCounter .pc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
   #popCounter b{color:#fff}
+  #firstRunHint{
+    position:absolute;top:56px;left:50%;transform:translateX(-50%);
+    max-width:min(86vw,340px);font-size:11px;color:var(--ink);text-align:center;
+    pointer-events:none;background:rgba(14,16,18,.92);border:1px solid var(--line);
+    padding:9px 14px;border-radius:8px;z-index:220;opacity:0;
+  }
+  #firstRunHint.show{opacity:1}
+  @media (prefers-reduced-motion: no-preference){
+    #firstRunHint{transition:opacity .4s ease}
+  }
   #inspector{
     position:absolute;top:12px;right:12px;max-width:220px;
     background:rgba(14,16,18,.92);border:1px solid rgba(255,255,255,.1);border-radius:8px;
@@ -265,6 +275,7 @@
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="hint">Touche la scène pour placer le type sélectionné.</div>
+    <div id="firstRunHint"></div>
     <div id="popCounter"></div>
     <div id="inspector" class="hidden">
       <div class="insp-head">
