@@ -20,6 +20,7 @@ import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistor
 import { applyScenarioVisibility as applyScenarioVisibilityCore, guardRangeFromScroll, setupCollapsibles } from './ui/panel';
 import { buildTypeButtonsHtml as buildTypeButtonsHtmlCore } from './ui/toolbar';
 import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from './ui/sliders';
+import { createLoopState as createLoopStateCore, createLoop as createLoopCore } from './ui/loop';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -187,31 +188,14 @@ import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from '
   }
 
   // ---------- Boucle ----------
-  let running = false, lastTime = 0, accTick = 0;
-  let simSpeedMultiplier = 1;
-  let statsAccum = 0;
-  function loop(now){
-    requestAnimationFrame(loop);
-    if(!lastTime) lastTime = now;
-    const dt = Math.min(0.05, (now-lastTime)/1000);
-    lastTime = now;
-    if(running){
-      const perception = +document.getElementById('perception').value;
-      const forceMag = +document.getElementById('force').value;
-      const speed = +document.getElementById('speed').value;
-      const panicRadius = +document.getElementById('panicRadius').value;
-      for(let s=0; s<simSpeedMultiplier; s++){
-        updateAgents(dt, perception, forceMag, speed, panicRadius);
-        accTick += dt;
-        if(accTick > 0.18){ stepConway(); accTick = 0; }
-        statsAccum += dt;
-        if(statsAccum > 1){ sampleStatsHistory(); statsAccum = 0; }
-      }
-    }
-    render();
-    updateInspector();
-    updatePopCounter();
-  }
+  // Fabrique de la boucle d'animation : voir ui/loop.ts. loopState est partagé avec
+  // les boutons lecture/pause et cycle de vitesse plus bas (même objet, propriétés
+  // réassignées directement).
+  const loopState = createLoopStateCore();
+  const loop = createLoopCore(loopState, {
+    getSliderValue: (id) => +document.getElementById(id).value,
+    updateAgents, stepConway, sampleStatsHistory, render, updateInspector, updatePopCounter,
+  });
 
   // ---------- UI ----------
   let selectedType = 'chasseur';
@@ -325,10 +309,10 @@ import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from '
 
   const SPEED_STEPS = [1,2,4];
   document.getElementById('speedCycleBtn').addEventListener('click', function(){
-    const i = SPEED_STEPS.indexOf(simSpeedMultiplier);
-    simSpeedMultiplier = SPEED_STEPS[(i+1) % SPEED_STEPS.length];
-    const arrows = '⏩'.repeat(SPEED_STEPS.indexOf(simSpeedMultiplier)+1);
-    this.textContent = `${arrows} Vitesse ×${simSpeedMultiplier}`;
+    const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
+    loopState.simSpeedMultiplier = SPEED_STEPS[(i+1) % SPEED_STEPS.length];
+    const arrows = '⏩'.repeat(SPEED_STEPS.indexOf(loopState.simSpeedMultiplier)+1);
+    this.textContent = `${arrows} Vitesse ×${loopState.simSpeedMultiplier}`;
   });
   document.getElementById('showPopCounter').addEventListener('change', function(){
     document.getElementById('popCounter').classList.toggle('hidden', !this.checked);
@@ -653,9 +637,9 @@ import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from '
   }
 
   document.getElementById('playBtn').addEventListener('click', function(){
-    running = !running;
-    this.textContent = running ? '⏸ Pause' : '▶ Lancer';
-    this.classList.toggle('running', running);
+    loopState.running = !loopState.running;
+    this.textContent = loopState.running ? '⏸ Pause' : '▶ Lancer';
+    this.classList.toggle('running', loopState.running);
   });
   document.getElementById('clearBtn').addEventListener('click', function(){
     if(this.dataset.armed==='1'){
@@ -680,7 +664,7 @@ import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from '
   document.getElementById('resetConfigBtn').addEventListener('click', function(){
     loomingMode = true; predationMode = false; popDynamicsMode = false; noCapacityLimit = false;
     showPherReturn = true; showPherSearch = true; antNoCapacityLimit = false;
-    boundaryMode = 'bounce'; simSpeedMultiplier = 1;
+    boundaryMode = 'bounce'; loopState.simSpeedMultiplier = 1;
     document.getElementById('loomingMode').checked = true;
     document.getElementById('predationMode').checked = false;
     document.getElementById('popDynamicsMode').checked = false;
