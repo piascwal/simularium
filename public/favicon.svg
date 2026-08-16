@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#0a0c0e"/>
+
+  <g stroke="#e0523f" stroke-linecap="round" fill="none">
+    <line x1="406" y1="618" x2="298" y2="726" stroke-width="12" opacity="0.55"/>
+    <line x1="383" y1="657" x2="298" y2="742" stroke-width="9" opacity="0.4"/>
+    <line x1="428" y1="657" x2="343" y2="742" stroke-width="9" opacity="0.4"/>
+  </g>
+
+  <g transform="translate(406,618) rotate(-45) scale(17)">
+    <path d="M11,0 L-7,6.5 L-7,-6.5 Z" fill="#e0523f"/>
+  </g>
+
+  <g transform="translate(604,420) rotate(-45) scale(15)">
+    <path d="M7,0 L-4.5,4 L-4.5,-4 Z" fill="#5fb0e8"/>
+  </g>
+</svg>
