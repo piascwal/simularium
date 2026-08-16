@@ -30,7 +30,10 @@ export function computeNestDistanceField(
       const cx = gx * DIST_CELL + DIST_CELL / 2, cy = gy * DIST_CELL + DIST_CELL / 2;
       for (const o of obstacles) {
         const cp = closestPointOnWall(cx, cy, o.points);
-        if (Math.hypot(cx - cp.x, cy - cp.y) < o.thickness + 8) {
+        // Marge minimale (2px, pas 8 — voir exitDistance.ts pour le raisonnement complet) : un
+        // couloir tracé à largeur "normale" pouvait se retrouver entièrement bloqué dans le champ
+        // malgré un passage visuellement ouvert, la marge s'ajoutant des deux côtés du couloir.
+        if (Math.hypot(cx - cp.x, cy - cp.y) < o.thickness + 2) {
           blocked[gy * distCols + gx] = 1;
           break;
         }

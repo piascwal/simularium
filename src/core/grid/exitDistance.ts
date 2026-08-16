@@ -33,7 +33,10 @@ export function computeExitDistanceField(
       const cx = gx * DIST_CELL + DIST_CELL / 2, cy = gy * DIST_CELL + DIST_CELL / 2;
       for (const o of obstacles) {
         const cp = closestPointOnWall(cx, cy, o.points);
-        if (Math.hypot(cx - cp.x, cy - cp.y) < o.thickness + 8) {
+        // Marge minimale (2px, pas 8) : un couloir tracé à main levée à largeur "normale" (60-80px)
+        // se retrouvait entièrement bloqué dans le champ alors qu'il paraît bien ouvert à l'écran —
+        // la marge s'ajoute des deux côtés, donc consomme le double en largeur de passage réelle.
+        if (Math.hypot(cx - cp.x, cy - cp.y) < o.thickness + 2) {
           blocked[gy * exitDistCols + gx] = 1;
           break;
         }
