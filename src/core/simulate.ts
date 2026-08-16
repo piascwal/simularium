@@ -188,13 +188,20 @@ export function updateAgents(
     // --- pré-passe : gardiens (Heider-Simmel) ---
     // Doit s'exécuter après la pré-passe des chasseurs (a besoin de _hunting/_target) et avant la
     // boucle principale, pour que le chasseur visé sache dès sa propre itération qu'il doit fuir.
-    // Sans limite de distance ; choix fondé sur la proximité au fugitif attaqué (pas au chasseur)
-    // pour rester cohérent quand plusieurs fugitifs sont menacés à la fois.
+    // Le gardien lui-même n'a pas de limite de distance (il peut réagir depuis n'importe où sur
+    // la scène), mais ne se déclenche que si le chasseur est réellement proche du fugitif qu'il
+    // poursuit (< perception) — sans ce filtre, un chasseur qui vient tout juste de choisir un
+    // fugitif à l'autre bout de la scène déclenche déjà l'interposition, et le gardien arrive
+    // systématiquement en position avant que le chasseur n'ait la moindre chance de s'approcher :
+    // plus aucune tension, la menace de l'expérience originale disparaît. Choix du fugitif à
+    // défendre fondé sur la proximité au fugitif attaqué (pas au chasseur), pour rester cohérent
+    // quand plusieurs fugitifs sont menacés à la fois.
     for(const a of agents){
       if(a.type!=='gardien') continue;
       let bestCh: Agent | null = null, bestD = Infinity;
       for(const other of agents){
         if(other.type!=='chasseur' || !other._hunting || !other._target) continue;
+        if(other._target.d > perception) continue;
         const d = Math.hypot(other._target.a.x-a.x, other._target.a.y-a.y);
         if(d<bestD){ bestD=d; bestCh=other; }
       }
