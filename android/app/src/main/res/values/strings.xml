@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Simularium</string>
+    <string name="title_activity_main">Simularium</string>
+    <string name="package_name">io.github.piascwal.simularium</string>
+    <string name="custom_url_scheme">io.github.piascwal.simularium</string>
+</resources>

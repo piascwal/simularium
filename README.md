@@ -41,14 +41,42 @@ npm install
 npm run dev
 ```
 
-## État du projet
+## Version mobile (Android)
 
-Le moteur de simulation vit encore dans un seul module (`src/main.ts`),
-hérité du prototype monofichier d'origine. Le projet utilise maintenant
-Vite + TypeScript et se déploie via GitHub Actions, en préparation d'un
-découpage progressif en modules `core` (simulation, sans DOM) / `render`
-(canvas) / `ui` (interface), avec pour objectif une version web **et**
-mobile (Capacitor).
+Le moteur ne touchant jamais le DOM directement (voir plus bas), l'appli
+s'empaquette telle quelle via [Capacitor](https://capacitorjs.com/) :
+
+```bash
+npm run build:capacitor   # build web avec chemins relatifs (nécessaire hors navigateur)
+npx cap sync android      # recopie les assets + synchronise le projet natif
+npx cap open android      # ouvre le projet dans Android Studio
+```
+
+Il faut Android Studio (avec le SDK Android) installé pour compiler et lancer
+l'appli — c'est ce qui manque sur la machine où ce projet a été développé,
+donc le projet natif (`android/`) est scaffoldé et vérifié structurellement,
+mais n'a pas encore tourné sur un appareil/émulateur réel. iOS demande un Mac
+(Xcode) : `npx cap add ios` n'a pas pu être tenté ici.
+
+## Architecture
+
+Le monolithe d'origine est découpé en trois couches :
+
+- **`src/core/`** — moteur de simulation pur, aucune dépendance au DOM
+  (agents, scénarios, grilles de phéromones/Conway, distance au nid...).
+  C'est cette propriété qui permet à Capacitor de réutiliser le même code
+  sans changement.
+- **`src/render/`** — dessin sur le `<canvas>`, lecture seule vis-à-vis de
+  l'état.
+- **`src/ui/`** — logique d'interface (sliders, inspecteur, statistiques,
+  boucle d'animation).
+- **`src/main.ts`** — bootstrap et câblage DOM (événements, sélection
+  d'éléments) ; ce qui reste du monofichier d'origine, réduit à la colle
+  entre les trois couches ci-dessus.
+
+Le projet est en TypeScript strict partout sauf `main.ts`, qui reste du
+JavaScript non typé pour l'instant (câblage DOM, faible valeur à typer
+strictement dans l'immédiat).
 
 ## Licence
 
