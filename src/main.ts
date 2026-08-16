@@ -7,6 +7,7 @@ import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry'
 import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } from './core/grid/conway';
 import { pcols, prows, pidx, pherReturn, pherSearch, initPheromoneGrid, depositPheromone, samplePheromone, evaporatePheromone } from './core/grid/pheromone';
 import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDistance';
+import { maybeRecomputeExitField } from './core/grid/exitDistance';
 import { buildAgentGrid, forEachNearby, nearestBy } from './core/grid/agentSpatialHash';
 import { SCENARIO_TYPES, SCENARIO_SLIDER_DEFAULTS } from './core/scenarios';
 import { PRIMITIVES, statusMeta } from './core/primitives';
@@ -63,8 +64,12 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   // ---------- Champ de distances au nid (colonie de fourmis) ----------
   // computeNestDistanceField / sampleNestDistance / maybeRecomputeNestField :
   // voir core/grid/nestDistance.ts
+  // ---------- Champ de distances à la sortie la plus proche (foule humaine) ----------
+  // computeExitDistanceField / sampleExitDistance / maybeRecomputeExitField :
+  // voir core/grid/exitDistance.ts — même principe, sources multiples (une par sortie).
   function recomputeNestFieldForCurrentState(){
     maybeRecomputeNestField(scenario==='ants', agents.find(a=>a.type==='reine'), worldW, worldH, obstacles);
+    maybeRecomputeExitField(scenario==='foule', exits, worldW, worldH, obstacles);
   }
 
   // ---------- Phéromones (colonie de fourmis) ----------
@@ -130,7 +135,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       return ids;
     }
     if(scenario==='foule'){
-      const ids = ['rechercheSortie','harde','congestionRalentissement','evitementObstacle','separationCorps','antiBlocage', boundaryId];
+      const ids = ['rechercheSortie','grilleDistanceSortie','harde','congestionRalentissement','evitementObstacle','separationCorps','antiBlocage', boundaryId];
       if(loomingMode){ ids.push('looming'); ids.push('fuir'); }
       return ids;
     }
@@ -638,7 +643,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   function commitTapAction(x: number, y: number){
     if(mode==='refuge'){ refuge = {x,y,r:55}; return; }
     if(mode==='food'){ food.push({x,y,r:26,qty:60,maxQty:60}); return; }
-    if(mode==='exit'){ exits.push({x,y,r:22}); return; }
+    if(mode==='exit'){ exits.push({x,y,r:22}); recomputeNestFieldForCurrentState(); return; }
     if(mode==='alarm'){ alarms.push({x,y,r:10}); return; }
     if(mode==='inspect'){
       const found = findAgentNear(x,y);

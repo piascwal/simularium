@@ -2,6 +2,7 @@ import { rand } from './rng';
 import { evaporatePheromone, depositPheromone, samplePheromone, pherReturn, pherSearch } from './grid/pheromone';
 import { disturbGridAt } from './grid/conway';
 import { sampleNestDistance } from './grid/nestDistance';
+import { sampleExitDistance } from './grid/exitDistance';
 import { closestPointOnWall } from './grid/geometry';
 import { buildAgentGrid, forEachNearby, nearestBy } from './grid/agentSpatialHash';
 import { createAgent, ageCorpses as ageCorpsesCore, getMidden as getMiddenCore } from './agent';
@@ -19,6 +20,13 @@ function forEachNearbyAgents(x: number, y: number, radius: number, cb: (other: A
 }
 function nearestAgentBy(agent: Agent, match: (other: Agent) => boolean, maxRadius?: number) {
   return nearestBy<Agent>(agent, match, maxRadius);
+}
+// Un seul des deux champs de distance est jamais actif à la fois (chacun n'existe que pour
+// son propre scénario) : pas besoin de distinguer par agent.type, l'autre renvoie toujours -1.
+function sampleGoalDistance(x: number, y: number): number {
+  const ed = sampleExitDistance(x, y);
+  if(ed >= 0) return ed;
+  return sampleNestDistance(x, y);
 }
 
 // updateAgents() déplacé en bloc depuis le monolithe (tranche 9 du plan de migration),
@@ -310,9 +318,26 @@ export function updateAgents(
           if(exitRemovesAgents && bdE < nearestExit.r){
             toEvacuate.push(agent);
           }
-          const dx=nearestExit.x-agent.x, dy=nearestExit.y-agent.y;
-          const d=Math.hypot(dx,dy)||1;
-          desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
+          // Primitive "grilleDistanceSortie" (adapted) : descend le gradient de distance à la
+          // sortie la plus proche calculé par BFS en tenant compte des murs (core/grid/exitDistance.ts)
+          // — un piéton ne fonce plus tout droit dans un obstacle qui coupe la ligne directe vers
+          // la sortie. Repli sur la ligne droite seulement si le champ est indisponible (ex. juste
+          // après un changement de scénario, avant le premier recalcul).
+          const myDist = sampleExitDistance(agent.x, agent.y);
+          if(myDist >= 0){
+            const sampleD = DIST_CELL*1.4;
+            const angles = [agent.angle, agent.angle-0.5, agent.angle+0.5, agent.angle-1.1, agent.angle+1.1];
+            let bestA = agent.angle, bestV = myDist;
+            for(const ang of angles){
+              const v = sampleExitDistance(agent.x+Math.cos(ang)*sampleD, agent.y+Math.sin(ang)*sampleD);
+              if(v>=0 && v<bestV){ bestV=v; bestA=ang; }
+            }
+            desiredX += Math.cos(bestA)*1.2; desiredY += Math.sin(bestA)*1.2; hasDesire=true;
+          } else {
+            const dx=nearestExit.x-agent.x, dy=nearestExit.y-agent.y;
+            const d=Math.hypot(dx,dy)||1;
+            desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
+          }
         }
 
         // Primitive "harde" (established, Couzin et al. 2002 ; Moussaïd et al. 2011) : tendance
@@ -740,7 +765,27 @@ export function updateAgents(
           // virage d'un couloir complexe — le délai ci-dessous n'est qu'un filet de sécurité.
           agent._escapeUntil = t + 6;
           agent._escapeStartX = agent.x; agent._escapeStartY = agent.y;
+          // Sens de contournement : suit la tangente qui rapproche le plus de l'objectif (champ de
+          // distance) plutôt qu'un tirage à pile ou face — sinon un contournement sur deux part
+          // brièvement dans le mauvais sens avant de se corriger. Repli sur le tirage aléatoire si
+          // aucun mur à portée ou aucun champ de distance disponible pour ce scénario.
           agent._escapeSign = rand()<0.5 ? -1 : 1;
+          let bdSign=Infinity, obsCpSign=null as Point | null;
+          for(const o of obstacles){
+            const cp = closestPointOnWall(agent.x, agent.y, o.points);
+            const d = Math.hypot(agent.x-cp.x, agent.y-cp.y);
+            if(d<bdSign){ bdSign=d; obsCpSign=cp; }
+          }
+          if(obsCpSign){
+            const nx = agent.x-obsCpSign.x, ny = agent.y-obsCpSign.y;
+            const nd = Math.hypot(nx,ny)||1;
+            const tx = -ny/nd, ty = nx/nd;
+            const dPlus = sampleGoalDistance(agent.x+tx*30, agent.y+ty*30);
+            const dMinus = sampleGoalDistance(agent.x-tx*30, agent.y-ty*30);
+            if(dPlus>=0 && dMinus>=0 && dPlus!==dMinus){
+              agent._escapeSign = dPlus < dMinus ? 1 : -1;
+            }
+          }
         }
         agent._lastCheckX = agent.x; agent._lastCheckY = agent.y;
         agent._stuckTimer = 0;

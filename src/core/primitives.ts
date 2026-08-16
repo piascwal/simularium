@@ -100,6 +100,12 @@ export const PRIMITIVES: Record<string, Primitive> = {
     ref: 'Helbing & Molnár 1995 (modèle de force sociale)',
     desc: 'Chaque piéton se dirige en permanence vers la sortie perçue la plus proche, même en pleine panique — même patron que la recherche de refuge du fugitif.'
   },
+  grilleDistanceSortie: {
+    label: 'Champ de distances à la sortie',
+    status: 'adapted',
+    ref: 'Principe du flood-fill/BFS en navigation robotique (apparenté aux algorithmes "Bug") ; même mécanisme que le champ de distances au nid de la colonie de fourmis',
+    desc: 'Calculé par balayage depuis chaque sortie, en tenant compte des murs — un piéton suit le couloir le plus court vers la sortie la plus proche plutôt que de foncer droit dessus au mépris des obstacles. Sans ce champ, la recherche de sortie viserait à vol d’oiseau et produirait des attroupements contre le premier mur venu.'
+  },
   harde: {
     label: 'Effet de harde',
     status: 'established',
