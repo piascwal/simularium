@@ -771,6 +771,15 @@ export function updateAgents(
           const sign = agent._escapeSign || 1;
           desiredX = tx*sign*2.0 + (nx/nd)*0.9;
           desiredY = ty*sign*2.0 + (ny/nd)*0.9;
+          // Composante modérée vers l'objectif (direction déjà lissée, voir plus haut) en plus du
+          // pur suivi de tangente : près de l'EXTRÉMITÉ d'un mur (pas un long segment), le point
+          // "le plus proche" reste épinglé au même endroit tout autour, et le suivi de tangente pur
+          // peut orbiter indéfiniment autour de ce point plutôt que de finir par s'en écarter —
+          // observé en pratique (trajectoire en boucle près du bout d'un mur). Cette composante
+          // casse la symétrie circulaire sans dominer le contournement lui-même.
+          if(agent._smoothExitDx !== undefined && agent._smoothExitDy !== undefined){
+            desiredX += agent._smoothExitDx*0.6; desiredY += agent._smoothExitDy*0.6;
+          }
           hasDesire = true;
         } else if(hasDesire){
           // Pas de mur à portée : embouteillage de foule. On pousse plus fort dans la direction
