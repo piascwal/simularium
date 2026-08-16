@@ -21,6 +21,8 @@ import { applyScenarioVisibility as applyScenarioVisibilityCore, guardRangeFromS
 import { buildTypeButtonsHtml as buildTypeButtonsHtmlCore } from './ui/toolbar';
 import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from './ui/sliders';
 import { createLoopState as createLoopStateCore, createLoop as createLoopCore } from './ui/loop';
+import { resolveShortcut } from './ui/shortcuts';
+import { computeQuickMenuPosition } from './ui/quickMenu';
 import type { Agent, FoodSource, Exit, Alarm, Corpse } from './core/agent';
 import type { ScenarioId, AgentTypeDef, Obstacle, Point } from './core/types';
 
@@ -317,13 +319,20 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     exitRemovesAgents = this.checked;
   });
 
-  const SPEED_STEPS = [1,2,4];
-  byId('speedCycleBtn').addEventListener('click', function(){
+  const SPEED_STEPS = [1,2,3,4];
+  function updateSpeedBtnText(){
     const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
-    loopState.simSpeedMultiplier = SPEED_STEPS[(i+1) % SPEED_STEPS.length];
-    const arrows = '⏩'.repeat(SPEED_STEPS.indexOf(loopState.simSpeedMultiplier)+1);
-    this.textContent = `${arrows} Vitesse ×${loopState.simSpeedMultiplier}`;
-  });
+    const arrows = '⏩'.repeat(i+1);
+    byId('speedCycleBtn').textContent = `${arrows} Vitesse ×${loopState.simSpeedMultiplier}`;
+  }
+  // direction=1 : bouton dans le panneau (cycle), aussi réutilisé par les raccourcis +/- (desktop).
+  function cycleSpeed(direction: 1 | -1){
+    const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
+    const next = (i + direction + SPEED_STEPS.length) % SPEED_STEPS.length;
+    loopState.simSpeedMultiplier = SPEED_STEPS[next];
+    updateSpeedBtnText();
+  }
+  byId('speedCycleBtn').addEventListener('click', ()=> cycleSpeed(1));
   byId<HTMLInputElement>('showPopCounter').addEventListener('change', function(){
     byId('popCounter').classList.toggle('hidden', !this.checked);
   });
@@ -353,9 +362,17 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     byId('rowThickness').classList.add('hidden');
   }
 
-  byId('inspectBtn').addEventListener('click', function(){
-    mode = (mode==='inspect') ? 'place' : 'inspect'; clearToolButtons(); this.classList.toggle('active', mode==='inspect'); updateHintText();
-  });
+  function toggleInspectMode(){
+    mode = (mode==='inspect') ? 'place' : 'inspect';
+    clearToolButtons();
+    byId('inspectBtn').classList.toggle('active', mode==='inspect');
+    updateHintText();
+  }
+  byId('inspectBtn').addEventListener('click', toggleInspectMode);
+
+  function backToPlaceMode(){
+    mode = 'place'; clearToolButtons(); updateHintText();
+  }
 
   // Construction du HTML des boutons : voir ui/toolbar.ts
   function renderTypeButtons(){
@@ -569,22 +586,33 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     return findAgentNearCore(agents, TYPES, x, y);
   }
 
-  canvas.addEventListener('pointerdown', (e)=>{
-    const {x,y} = pointerWorldPos(e);
-    if(mode==='erase'){ eraseAt(x,y); isDrawing=true; lastDrawPoint={x,y}; canvas.setPointerCapture(e.pointerId); return; }
+  // Menu rapide (appui long) : voir ui/quickMenu.ts pour le calcul de position.
+  const quickMenuEl = byId('quickMenu');
+  function openQuickMenu(clientX: number, clientY: number){
+    quickMenuEl.classList.remove('hidden');
+    const rect = quickMenuEl.getBoundingClientRect();
+    const pos = computeQuickMenuPosition(clientX, clientY, rect.width, rect.height, window.innerWidth, window.innerHeight);
+    quickMenuEl.style.left = `${pos.left}px`;
+    quickMenuEl.style.top = `${pos.top}px`;
+  }
+  function closeQuickMenu(){
+    quickMenuEl.classList.add('hidden');
+  }
+
+  // Détection d'appui long, uniquement pour les modes "un tap = une action" (place, inspect,
+  // refuge, food, exit, alarm) — erase/obstacle gardent leur geste de glissement intact,
+  // le maintien y sert déjà à dessiner/effacer en continu.
+  const LONG_PRESS_MS = 500;
+  const LONG_PRESS_MOVE_THRESHOLD = 10;
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+  let longPressPending: { x: number; y: number; clientX: number; clientY: number } | null = null;
+  let longPressTriggered = false;
+
+  function commitTapAction(x: number, y: number){
     if(mode==='refuge'){ refuge = {x,y,r:55}; return; }
     if(mode==='food'){ food.push({x,y,r:26,qty:60,maxQty:60}); return; }
     if(mode==='exit'){ exits.push({x,y,r:22}); return; }
     if(mode==='alarm'){ alarms.push({x,y,r:10}); return; }
-    if(mode==='obstacle'){
-      // Outil de dessin (aucun statut scientifique) : un tracé continu forme une seule
-      // polyligne à épaisseur réglable, un clic simple n'y ajoute qu'un point.
-      currentWall = { points:[{x,y}], thickness: obstacleThickness };
-      obstacles.push(currentWall);
-      isDrawing = true; lastDrawPoint = {x,y};
-      canvas.setPointerCapture(e.pointerId);
-      return;
-    }
     if(mode==='inspect'){
       const found = findAgentNear(x,y);
       if(found) selectAgent(found.id); else deselectAgent();
@@ -597,9 +625,39 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       const oy = placeCount>1 ? (rand()-0.5)*50 : 0;
       addAgent(selectedType, x+ox, y+oy);
     }
+  }
+
+  function cancelLongPress(){
+    if(longPressTimer !== undefined){ clearTimeout(longPressTimer); longPressTimer = undefined; }
+    longPressPending = null;
+  }
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    const {x,y} = pointerWorldPos(e);
+    if(mode==='erase'){ eraseAt(x,y); isDrawing=true; lastDrawPoint={x,y}; canvas.setPointerCapture(e.pointerId); return; }
+    if(mode==='obstacle'){
+      // Outil de dessin (aucun statut scientifique) : un tracé continu forme une seule
+      // polyligne à épaisseur réglable, un clic simple n'y ajoute qu'un point.
+      currentWall = { points:[{x,y}], thickness: obstacleThickness };
+      obstacles.push(currentWall);
+      isDrawing = true; lastDrawPoint = {x,y};
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    longPressTriggered = false;
+    longPressPending = { x, y, clientX: e.clientX, clientY: e.clientY };
+    longPressTimer = setTimeout(()=>{
+      longPressTriggered = true;
+      longPressTimer = undefined;
+      if(longPressPending) openQuickMenu(longPressPending.clientX, longPressPending.clientY);
+    }, LONG_PRESS_MS);
   });
 
   canvas.addEventListener('pointermove', (e)=>{
+    if(longPressPending){
+      const dLp = Math.hypot(e.clientX-longPressPending.clientX, e.clientY-longPressPending.clientY);
+      if(dLp >= LONG_PRESS_MOVE_THRESHOLD) cancelLongPress();
+    }
     if(!isDrawing || !lastDrawPoint) return;
     const {x,y} = pointerWorldPos(e);
     const d = Math.hypot(x-lastDrawPoint.x, y-lastDrawPoint.y);
@@ -613,9 +671,41 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   });
 
   function stopDrawing(){ isDrawing = false; lastDrawPoint = null; currentWall = null; recomputeNestFieldForCurrentState(); }
-  canvas.addEventListener('pointerup', stopDrawing);
-  canvas.addEventListener('pointercancel', stopDrawing);
-  canvas.addEventListener('pointerleave', stopDrawing);
+  canvas.addEventListener('pointerup', ()=>{
+    if(longPressPending){
+      const pending = longPressPending;
+      const triggered = longPressTriggered;
+      cancelLongPress();
+      if(!triggered) commitTapAction(pending.x, pending.y);
+    }
+    stopDrawing();
+  });
+  canvas.addEventListener('pointercancel', ()=>{ cancelLongPress(); stopDrawing(); });
+  canvas.addEventListener('pointerleave', ()=>{ cancelLongPress(); stopDrawing(); });
+
+  byId('qmRun').addEventListener('click', ()=>{ toggleRun(); closeQuickMenu(); });
+  byId('qmInspect').addEventListener('click', ()=>{ toggleInspectMode(); closeQuickMenu(); });
+  byId('qmPlace').addEventListener('click', ()=>{ backToPlaceMode(); closeQuickMenu(); });
+  document.addEventListener('pointerdown', (e)=>{
+    if(quickMenuEl.classList.contains('hidden')) return;
+    if(e.target instanceof Node && quickMenuEl.contains(e.target)) return;
+    closeQuickMenu();
+  });
+
+  window.addEventListener('keydown', (e)=>{
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    const action = resolveShortcut(e.key, activeTag);
+    if(!action) return;
+    switch(action){
+      case 'toggleRun': toggleRun(); break;
+      case 'speedUp': cycleSpeed(1); break;
+      case 'speedDown': cycleSpeed(-1); break;
+      case 'toggleInspect': toggleInspectMode(); break;
+      case 'backToPlace': backToPlaceMode(); closeQuickMenu(); break;
+      case 'toggleMenu': panelEl.classList.toggle('open'); break;
+    }
+    e.preventDefault();
+  });
 
   const panelEl = byId('panel');
   byId('dragHandle').addEventListener('click', ()=>{ panelEl.classList.toggle('open'); });
@@ -650,11 +740,13 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     panelEl.addEventListener('touchend', ()=>{ dragStartY = null; });
   }
 
-  byId('playBtn').addEventListener('click', function(){
+  function toggleRun(){
     loopState.running = !loopState.running;
-    this.textContent = loopState.running ? '⏸ Pause' : '▶ Lancer';
-    this.classList.toggle('running', loopState.running);
-  });
+    const btn = byId('playBtn');
+    btn.textContent = loopState.running ? '⏸ Pause' : '▶ Lancer';
+    btn.classList.toggle('running', loopState.running);
+  }
+  byId('playBtn').addEventListener('click', toggleRun);
   let clearBtnArmTimer: ReturnType<typeof setTimeout> | undefined;
   byId('clearBtn').addEventListener('click', function(){
     if(this.dataset.armed==='1'){
@@ -688,7 +780,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     byId<HTMLInputElement>('showPherSearch').checked = true;
     byId<HTMLInputElement>('antNoCapacityLimit').checked = false;
     document.querySelectorAll('.boundary-btn').forEach(b=>b.classList.toggle('active', (b as HTMLElement).dataset.boundary==='bounce'));
-    byId('speedCycleBtn').textContent = '⏩ Vitesse ×1';
+    updateSpeedBtnText();
     renderPrimitiveBadges();
     updateConditionalRows();
   });

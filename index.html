@@ -211,6 +211,23 @@
   }
   #inspBody{padding:8px 9px;display:flex;flex-direction:column;gap:4px;line-height:1.5}
   #inspBody b{color:#fff}
+
+  /* Menu rapide (appui long sur la scène, mobile) : évite d'ouvrir le panneau complet
+     pour les actions les plus fréquentes — voir ui/quickMenu.ts pour son positionnement. */
+  #quickMenu{
+    position:fixed;z-index:300;display:flex;gap:6px;
+    background:rgba(14,16,18,.96);border:1px solid rgba(255,255,255,.14);
+    border-radius:16px;padding:8px;box-shadow:0 10px 34px rgba(0,0,0,.55);
+    backdrop-filter:blur(6px);
+  }
+  #quickMenu.hidden{display:none}
+  #quickMenu button{
+    width:46px;height:46px;border-radius:11px;border:1px solid var(--line);
+    background:#161a1e;color:var(--ink);font-size:19px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0;
+  }
+  #quickMenu button:active{background:#232a31;border-color:var(--refuge)}
+  #quickMenu button.active{border-color:var(--refuge);color:var(--refuge)}
 </style>
 </head>
 <body>
@@ -251,6 +268,11 @@
         <button id="inspClose">✕</button>
       </div>
       <div id="inspBody"></div>
+    </div>
+    <div id="quickMenu" class="hidden">
+      <button id="qmRun" data-qm="toggleRun" aria-label="Lecture / pause">▶</button>
+      <button id="qmInspect" data-qm="toggleInspect" aria-label="Mode inspection">🔍</button>
+      <button id="qmPlace" data-qm="backToPlace" aria-label="Mode placement">✛</button>
     </div>
   </div>
   <div id="panel">
