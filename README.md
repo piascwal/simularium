@@ -41,6 +41,15 @@ npm install
 npm run dev
 ```
 
+## Installer comme app (PWA)
+
+Le site en ligne est une PWA installable directement depuis le navigateur,
+sans store ni APK : dans Chrome (Android) ou Safari (iOS), menu → « Ajouter
+à l'écran d'accueil » / « Installer l'application ». Elle se lance ensuite
+en plein écran avec sa propre icône, et reste utilisable hors-ligne
+(service worker en cache-réseau-d'abord, `public/sw.js`) — l'app étant
+100% statique, rien ne dépend d'un serveur au runtime.
+
 ## Version mobile (Android)
 
 Le moteur ne touchant jamais le DOM directement (voir plus bas), l'appli
@@ -65,6 +74,24 @@ Android — c'est indépendant du JDK utilisé pour compiler, qui ne fait que
 déterminer l'outillage de build, pas la compatibilité de l'appli installée.
 
 iOS demande un Mac (Xcode) : `npx cap add ios` n'a pas pu être tenté ici.
+
+### Release signée (installation sans mode développeur)
+
+Un APK debug ne s'installe pas sans le débogage USB activé sur le
+téléphone. Pour un APK release signé — transférable par simple copie de
+fichier (USB/MTP) et installable via le gestionnaire de fichiers, sans
+jamais activer les options développeur :
+
+```bash
+JAVA_HOME="<jdk21>" ./gradlew assembleRelease
+```
+
+nécessite `android/keystore.properties` (non committé, voir
+`android/.gitignore`) pointant vers un keystore local, généré une fois via
+`keytool -genkeypair`. Sans ce fichier, `assembleRelease` produit un APK
+non signé, inutilisable tel quel. **À conserver précieusement** : perdre ce
+keystore empêche de mettre à jour l'app en place sur un appareil (Android
+exige la même signature pour accepter une mise à jour).
 
 ## Architecture
 

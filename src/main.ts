@@ -897,3 +897,12 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   renderStatsChart();
   requestAnimationFrame(loop);
 })();
+
+// PWA : app 100% statique, aucune dépendance backend — installable et utilisable hors-ligne
+// une fois la première visite en cache. import.meta.env.BASE_URL suit la config de vite.config.ts
+// (racine en dev, /simularium/ sur GitHub Pages) pour enregistrer le service worker au bon scope.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  });
+}
