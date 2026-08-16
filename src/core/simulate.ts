@@ -415,6 +415,27 @@ export function updateAgents(
         });
         if(nH>0){ desiredX += (ax/nH)*0.4; desiredY += (ay/nH)*0.4; hasDesire=true; }
 
+        // Primitive "espacePersonnel" (established, Helbing, Farkas & Vicsek 2000 — le modèle de
+        // force sociale complet comprend un terme d'attraction vers l'objectif ET un terme de
+        // répulsion entre piétons ; seul le premier était implémenté ici, donc rien n'empêchait
+        // deux piétons de se superposer entièrement. Sans limite physique à la densité locale, un
+        // goulot d'étranglement (porte étroite) ne forme pas une file mais un tas de triangles
+        // empilés au même endroit, qui ne se distingue plus d'un blocage même quand le flux réel
+        // continue. Rayon volontairement court (l'espace personnel, pas un évitement anticipé
+        // comme le troupeau ci-dessus) pour ne concurrencer la recherche de sortie qu'au contact.
+        let spx=0, spy=0;
+        const personalSpace = 16;
+        forEachNearbyAgents(agent.x, agent.y, personalSpace, other=>{
+          if(other===agent || other.type!=='pieton') return;
+          const dx = agent.x-other.x, dy = agent.y-other.y;
+          const d = Math.hypot(dx,dy);
+          if(d < personalSpace && d>0.01){
+            const w = (1-d/personalSpace)*2.0;
+            spx += (dx/d)*w; spy += (dy/d)*w;
+          }
+        });
+        if(spx!==0 || spy!==0){ desiredX += spx; desiredY += spy; hasDesire=true; }
+
         // Primitive "looming"/"fuir" (established) réutilisées telles quelles : une alarme
         // proche déclenche la même panique que le looming prédateur, source statique en plus.
         if(loomingMode){
