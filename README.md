@@ -52,11 +52,19 @@ npx cap sync android      # recopie les assets + synchronise le projet natif
 npx cap open android      # ouvre le projet dans Android Studio
 ```
 
-Il faut Android Studio (avec le SDK Android) installé pour compiler et lancer
-l'appli — c'est ce qui manque sur la machine où ce projet a été développé,
-donc le projet natif (`android/`) est scaffoldé et vérifié structurellement,
-mais n'a pas encore tourné sur un appareil/émulateur réel. iOS demande un Mac
-(Xcode) : `npx cap add ios` n'a pas pu être tenté ici.
+Compilation en ligne de commande vérifiée (`./gradlew assembleDebug`, APK généré) :
+il faut un JDK **21** (le JBR fourni avec Android Studio est souvent plus
+récent — 25 au moment de l'écriture — et n'est pas encore supporté par la
+version de Gradle utilisée ici). Pointer `JAVA_HOME` dessus avant d'appeler
+`gradlew`, ou laisser Android Studio gérer son propre JDK de build via
+*Project Structure → Gradle JDK*.
+
+`minSdkVersion` est fixé à 24 (Android 7.0, 2016), qui couvre déjà la quasi-
+totalité des appareils actifs d'après les statistiques de distribution
+Android — c'est indépendant du JDK utilisé pour compiler, qui ne fait que
+déterminer l'outillage de build, pas la compatibilité de l'appli installée.
+
+iOS demande un Mac (Xcode) : `npx cap add ios` n'a pas pu être tenté ici.
 
 ## Architecture
 
