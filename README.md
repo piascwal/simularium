@@ -74,9 +74,8 @@ Le monolithe d'origine est découpé en trois couches :
   d'éléments) ; ce qui reste du monofichier d'origine, réduit à la colle
   entre les trois couches ci-dessus.
 
-Le projet est en TypeScript strict partout sauf `main.ts`, qui reste du
-JavaScript non typé pour l'instant (câblage DOM, faible valeur à typer
-strictement dans l'immédiat).
+Le projet est en TypeScript strict partout, `main.ts` compris
+(`npm run typecheck`).
 
 ## Licence
 
