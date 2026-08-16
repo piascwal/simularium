@@ -17,6 +17,7 @@ export interface Agent {
   _lastCheckX: number;
   _lastCheckY: number;
   _lastCheckGoalDist?: number;
+  _stuckStreak?: number;
   _carryingFood: boolean;
   _carryingCorpse: boolean;
   _spawnCooldown: number;

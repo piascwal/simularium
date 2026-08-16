@@ -833,20 +833,33 @@ export function updateAgents(
       // le blocage et déclenche le suivi de contour défini plus haut, tant qu'il n'est pas déjà actif.
       agent._stuckTimer = (agent._stuckTimer||0) + dt;
       if(agent._stuckTimer > 0.5){
+        const inEscape = !!(agent._escapeUntil && t < agent._escapeUntil);
         // Progrès réel vers l'objectif (champ de distance) quand disponible, pas seulement le
         // déplacement brut — dans une foule dense, un agent bousculé par ses voisins se déplace
         // de plusieurs unités sans jamais avancer vers la sortie ; le déplacement brut seul
         // masquait ce blocage et empêchait le contournement (ci-dessous) de jamais s'activer.
+        // Seuil relatif à la vitesse courante (déjà réduite par la congestion légitime), pas un
+        // chiffre fixe : sans ça, une foule dense mais qui avance normalement (juste ralentie)
+        // se fait passer pour bloquée en permanence, dès que la congestion réduit sa vitesse.
+        const expectedProgress = Math.max(1, (agent._lastSpeed ?? 0) * 0.5 * 0.15);
         const goalDist = sampleGoalDistance(agent.x, agent.y);
         let stuck: boolean;
         if(goalDist >= 0){
           const lastGoalDist = agent._lastCheckGoalDist ?? goalDist;
-          stuck = (lastGoalDist - goalDist) < 3;
+          stuck = (lastGoalDist - goalDist) < expectedProgress;
         } else {
-          stuck = Math.hypot(agent.x-agent._lastCheckX, agent.y-agent._lastCheckY) < 3;
+          stuck = Math.hypot(agent.x-agent._lastCheckX, agent.y-agent._lastCheckY) < expectedProgress;
         }
         agent._lastCheckGoalDist = goalDist >= 0 ? goalDist : undefined;
-        if(hasDesire && stuck && !(agent._escapeUntil && t < agent._escapeUntil)){
+        // Blocage persistant (plusieurs vérifications de suite), pas une seule fenêtre isolée :
+        // dans une foule dense, le progrès sur 0.5s oscille beaucoup à cause de la bousculade
+        // (collisions entre voisins), même quand la tendance de fond avance bien — une fenêtre
+        // isolée sous le seuil ne veut rien dire, un agent réellement bloqué l'est sur plusieurs
+        // vérifications d'affilée. Remis à zéro pendant un échappement déjà actif (qui ne
+        // progresse pas vers l'objectif par nature, suivant le contour du mur) pour ne pas
+        // ré-enchaîner un nouvel échappement dès la fin du précédent.
+        agent._stuckStreak = (!inEscape && stuck) ? (agent._stuckStreak||0) + 1 : 0;
+        if(hasDesire && agent._stuckStreak >= 4 && !inEscape){
           // Déclenche un échappement soutenu (suivi de contour), pas juste un coup de volant :
           // sinon la recherche d'objectif, recalculée dès la frame suivante, annule le correctif.
           // Principe Bug2 (Lumelsky & Stepanov 1987) : on ne sort du suivi de contour que sur un
