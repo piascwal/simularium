@@ -13,25 +13,26 @@ import { PRIMITIVES, statusMeta } from './core/primitives';
 import { createAgent, ageCorpses as ageCorpsesCore, getMidden as getMiddenCore } from './core/agent';
 import { updateAgents as updateAgentsCore } from './core/simulate';
 import { drawShape as drawShapeCore, render as renderCore } from './render/draw';
+import { updateWorldSize as updateWorldSizeCore, resize as resizeCore } from './ui/resize';
+import { pointerWorldPos as pointerWorldPosCore, findAgentNear as findAgentNearCore, eraseAt as eraseAtCore } from './ui/canvasInput';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
   let W=0, H=0, DPR=1;
   let zoneScale = 1, worldW=0, worldH=0;
 
+  // resize() / updateWorldSize() vivent maintenant dans ui/resize.ts (tranche 11
+  // du plan de migration) : wrapper au même schéma que updateAgents/render (petit
+  // état explicite, réécrit ici après l'appel).
   function updateWorldSize(){
-    worldW = W*zoneScale;
-    worldH = H*zoneScale;
-    initGrid(worldW, worldH);
-    initPheromoneGrid(worldW, worldH);
-    recomputeNestFieldForCurrentState();
+    const size = { W, H, DPR, zoneScale, worldW, worldH };
+    updateWorldSizeCore(size, recomputeNestFieldForCurrentState);
+    worldW = size.worldW; worldH = size.worldH;
   }
   function resize(){
-    DPR = Math.min(window.devicePixelRatio||1, 2);
-    W = canvas.clientWidth; H = canvas.clientHeight;
-    canvas.width = W*DPR; canvas.height = H*DPR;
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-    updateWorldSize();
+    const size = { W, H, DPR, zoneScale, worldW, worldH };
+    resizeCore(size, canvas, ctx, recomputeNestFieldForCurrentState);
+    W = size.W; H = size.H; DPR = size.DPR; worldW = size.worldW; worldH = size.worldH;
   }
   window.addEventListener('resize', resize);
 
@@ -525,29 +526,14 @@ import { drawShape as drawShapeCore, render as renderCore } from './render/draw'
   let currentWall = null;
   let obstacleThickness = 20;
 
+  // pointerWorldPos / eraseAt / findAgentNear : voir ui/canvasInput.ts
   function pointerWorldPos(e){
-    const rect = canvas.getBoundingClientRect();
-    return { x: (e.clientX-rect.left) * zoneScale, y: (e.clientY-rect.top) * zoneScale };
+    return pointerWorldPosCore(e, canvas, zoneScale);
   }
-
   function eraseAt(x,y){
-    let bd=Infinity, bi=-1;
-    agents.forEach((a,i)=>{ const d=Math.hypot(a.x-x,a.y-y); if(d<bd){bd=d;bi=i;} });
-    if(bi>-1 && bd<30*zoneScale){ agents.splice(bi,1); return; }
-    if(refuge && Math.hypot(refuge.x-x,refuge.y-y)<refuge.r){ refuge=null; return; }
-    for(let i=0;i<obstacles.length;i++){
-      const cp = closestPointOnWall(x, y, obstacles[i].points);
-      if(Math.hypot(cp.x-x, cp.y-y)<obstacles[i].thickness){ obstacles.splice(i,1); return; }
-    }
-    for(let i=0;i<food.length;i++){
-      if(Math.hypot(food[i].x-x,food[i].y-y)<food[i].r){ food.splice(i,1); return; }
-    }
-    for(let i=0;i<exits.length;i++){
-      if(Math.hypot(exits[i].x-x,exits[i].y-y)<exits[i].r){ exits.splice(i,1); return; }
-    }
-    for(let i=0;i<alarms.length;i++){
-      if(Math.hypot(alarms[i].x-x,alarms[i].y-y)<Math.max(alarms[i].r,16)){ alarms.splice(i,1); return; }
-    }
+    const state = { agents, refuge, obstacles, food, exits, alarms };
+    eraseAtCore(state, zoneScale, x, y);
+    refuge = state.refuge;
   }
 
   function selectAgent(id){
@@ -657,10 +643,7 @@ import { drawShape as drawShapeCore, render as renderCore } from './render/draw'
   }
 
   function findAgentNear(x,y){
-    let bd=Infinity, bi=-1;
-    agents.forEach((a,i)=>{ const d=Math.hypot(a.x-x,a.y-y); if(d<bd){bd=d;bi=i;} });
-    if(bi>-1 && bd < TYPES[agents[bi].type].radius + 12) return agents[bi];
-    return null;
+    return findAgentNearCore(agents, TYPES, x, y);
   }
 
   canvas.addEventListener('pointerdown', (e)=>{
