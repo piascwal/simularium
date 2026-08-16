@@ -7,16 +7,24 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <!-- Android 15+ (API 35) force l'edge-to-edge pour les apps ciblant ce SDK : le
+             contenu passerait sous la barre de navigation système, et env(safe-area-inset-bottom)
+             n'est pas fiable côté WebView Android pour la compenser en CSS. On désactive
+             l'imposition pour que l'OS réserve l'espace de la barre nav comme avant. Ignoré sans
+             effet sur les versions d'Android antérieures à 35. -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>
