@@ -15,6 +15,8 @@ import { updateAgents as updateAgentsCore } from './core/simulate';
 import { drawShape as drawShapeCore, render as renderCore } from './render/draw';
 import { updateWorldSize as updateWorldSizeCore, resize as resizeCore } from './ui/resize';
 import { pointerWorldPos as pointerWorldPosCore, findAgentNear as findAgentNearCore, eraseAt as eraseAtCore } from './ui/canvasInput';
+import { buildInspectorContent as buildInspectorContentCore } from './ui/inspector';
+import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistory as sampleStatsHistoryCore, renderStatsChartHtml as renderStatsChartHtmlCore } from './ui/stats';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -548,98 +550,43 @@ import { pointerWorldPos as pointerWorldPosCore, findAgentNear as findAgentNearC
   }
   document.getElementById('inspClose').addEventListener('click', deselectAgent);
 
+  // Logique de construction du contenu (quelles lignes selon le type/l'état) : voir
+  // ui/inspector.ts. Ne reste ici que la mise à jour DOM.
   function updateInspector(){
     if(!selectedAgentId) return;
     const a = agents.find(x=>x.id===selectedAgentId);
     if(!a){ deselectAgent(); return; } // l'agent a été mangé/retiré entre-temps
-    const meta = TYPES[a.type];
-    document.getElementById('inspTitle').textContent = meta.label;
-    const deg = Math.round(((a.angle*180/Math.PI)%360+360)%360);
-    const lines = [
-      `<div>Position <b>${Math.round(a.x)}, ${Math.round(a.y)}</b></div>`,
-      `<div>Cap <b>${deg}°</b></div>`,
-      `<div>Vitesse <b>${(a._lastSpeed||0).toFixed(1)}</b> u/s</div>`,
-      `<div>Comportement actif <b>${a._lastHasDesire ? 'oui' : 'non'}</b></div>`
-    ];
-    if(a.type==='fugitif' || a.type==='poisson') lines.push(`<div>Panique (Looming) <b>${a.isPanicking?'oui':'non'}</b></div>`);
-    if(a.type==='chasseur'){
-      lines.push(`<div>État <b>${a._fleeing?'fuit le gardien':a._hunting?'chasse':'errance'}</b></div>`);
-      if(popDynamicsMode) lines.push(`<div>Faim <b>${(a._hunger||0).toFixed(1)}s</b> / ${starvationTime}s</div>`);
-    }
-    if(a.type==='predateur'){
-      lines.push(`<div>État <b>${a._hunting?'chasse':'errance'}</b></div>`);
-      if(popDynamicsMode){
-        lines.push(`<div>Faim <b>${(a._hunger||0).toFixed(1)}s</b> / ${starvationTime}s</div>`);
-        const mot = a._huntMotivation ?? 1;
-        lines.push(`<div>Motivation de chasse <b>${mot<0.15?'rassasié, peu motivé':mot<0.6?'modérée':'affamé, forte'}</b></div>`);
-      }
-    }
-    if(a.type==='ouvriere' || a.type==='eclaireuse') lines.push(`<div>Charge nourriture <b>${a._carryingFood?'oui':'non'}</b></div>`);
-    lines.push(`<div style="margin-top:4px; color:var(--dim);">🟡 vitesse réelle · 🔵 direction désirée</div>`);
-    document.getElementById('inspBody').innerHTML = lines.join('');
+    const content = buildInspectorContentCore(a, TYPES, popDynamicsMode, starvationTime);
+    document.getElementById('inspTitle').textContent = content.title;
+    document.getElementById('inspBody').innerHTML = content.bodyHtml;
   }
 
+  // Logique de comptage/mise en forme : voir ui/stats.ts. Ne reste ici que la mise
+  // à jour DOM.
   function updatePopCounter(){
-    const counts = {};
-    for(const a of agents) counts[a.type] = (counts[a.type]||0) + 1;
-    const rows = Object.keys(TYPES).map(type=>{
-      const n = counts[type]||0;
-      return `<div class="pc-row"><span class="pc-dot" style="background:${TYPES[type].color}"></span>${TYPES[type].label} <b>${n}</b></div>`;
+    const content = buildPopCounterContentCore({
+      agents, TYPES, popDynamicsMode, scenario, totalBirths,
+      noCapacityLimit, carryingCapacity, exitRemovesAgents, totalEvacuated,
+      predationMode, edgeCaptures, interiorCaptures,
     });
-    document.getElementById('popCounter').innerHTML = rows.join('');
-    if(popDynamicsMode && scenario==='poisson'){
-      const preyCount = counts['poisson']||0;
-      document.getElementById('popCounter').innerHTML += `<div class="pc-row" style="margin-top:4px;border-top:1px solid rgba(255,255,255,.1);padding-top:4px;">Naissances cumulées <b>${totalBirths}</b> (plafond ${preyCount}/${noCapacityLimit?'∞':carryingCapacity})</div>`;
-    }
-
-    if(scenario==='foule' && exitRemovesAgents){
-      document.getElementById('popCounter').innerHTML += `<div class="pc-row" style="margin-top:4px;border-top:1px solid rgba(255,255,255,.1);padding-top:4px;">Évacués <b>${totalEvacuated}</b></div>`;
-    }
-
-    if(scenario==='poisson' && predationMode){
-      const total = edgeCaptures+interiorCaptures;
-      const pct = total>0 ? Math.round(edgeCaptures/total*100) : 0;
-      document.getElementById('confusionStats').innerHTML =
-        `Captures en bordure : <b>${edgeCaptures}</b> · au centre : <b>${interiorCaptures}</b>${total>0?` (${pct}% en bordure)`:''}`;
+    document.getElementById('popCounter').innerHTML = content.popCounterHtml;
+    if(content.confusionStatsHtml!==null){
+      document.getElementById('confusionStats').innerHTML = content.confusionStatsHtml;
     }
   }
 
   // ---------- Statistiques : historique des effectifs dans le temps ----------
   let statsHistory = [];
-  const STATS_MAX_POINTS = 90; // ~90s de fenêtre glissante
 
   function sampleStatsHistory(){
-    const counts = {};
-    for(const a of agents) counts[a.type] = (counts[a.type]||0) + 1;
-    statsHistory.push(counts);
-    if(statsHistory.length > STATS_MAX_POINTS) statsHistory.shift();
+    sampleStatsHistoryCore(statsHistory, agents);
     renderStatsChart();
   }
 
   function renderStatsChart(){
-    const el = document.getElementById('statsChart');
+    const el = document.getElementById("statsChart");
     if(!el) return;
-    const types = Object.keys(TYPES);
-    if(statsHistory.length < 2){
-      el.innerHTML = '<div style="font-size:10.5px;color:var(--dim);padding:4px 2px;">Lance la simulation pour commencer à voir l\u2019évolution des effectifs.</div>';
-      return;
-    }
-    const w = 240, h = 90, pad = 4;
-    let maxV = 1;
-    for(const snap of statsHistory){ for(const ty of types){ if((snap[ty]||0) > maxV) maxV = snap[ty]||0; } }
-    const stepX = (w-pad*2) / (statsHistory.length-1);
-    const paths = types.map(ty=>{
-      const d = statsHistory.map((snap,i)=>{
-        const x = pad + i*stepX;
-        const y = pad + (h-pad*2) * (1 - (snap[ty]||0)/maxV);
-        return `${i===0?'M':'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      return `<path d="${d}" fill="none" stroke="${TYPES[ty].color}" stroke-width="1.6"/>`;
-    }).join('');
-    const legend = types.map(ty=>
-      `<span class="sl-item"><span class="sl-dot" style="background:${TYPES[ty].color}"></span>${TYPES[ty].label}</span>`
-    ).join('');
-    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${paths}</svg><div class="stats-legend">${legend}</div>`;
+    el.innerHTML = renderStatsChartHtmlCore(statsHistory, TYPES);
   }
 
   function findAgentNear(x,y){
