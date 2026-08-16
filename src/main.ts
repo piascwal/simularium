@@ -17,6 +17,9 @@ import { updateWorldSize as updateWorldSizeCore, resize as resizeCore } from './
 import { pointerWorldPos as pointerWorldPosCore, findAgentNear as findAgentNearCore, eraseAt as eraseAtCore } from './ui/canvasInput';
 import { buildInspectorContent as buildInspectorContentCore } from './ui/inspector';
 import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistory as sampleStatsHistoryCore, renderStatsChartHtml as renderStatsChartHtmlCore } from './ui/stats';
+import { applyScenarioVisibility as applyScenarioVisibilityCore, guardRangeFromScroll, setupCollapsibles } from './ui/panel';
+import { buildTypeButtonsHtml as buildTypeButtonsHtmlCore } from './ui/toolbar';
+import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from './ui/sliders';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -237,13 +240,9 @@ import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistor
   // - Foule : rayon de déclenchement du Looming élargi, une panique se percevant/se propageant
   //   au-delà de la seule proximité géographique immédiate (Helbing et al. 2000).
   // SCENARIO_SLIDER_DEFAULTS : voir core/scenarios/*.ts
+  // voir ui/sliders.ts
   function applyScenarioSliderDefaults(){
-    const d = SCENARIO_SLIDER_DEFAULTS[scenario];
-    if(!d) return;
-    for(const id in d){
-      const el = document.getElementById(id);
-      if(el){ el.value = d[id]; el.dispatchEvent(new Event('input', {bubbles:true})); }
-    }
+    applyScenarioSliderDefaultsCore(scenario);
   }
   let congestionStrength = 0.12;
   let exitRemovesAgents = true; // true = sortie (évacuation), false = point de rassemblement
@@ -364,13 +363,11 @@ import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistor
     mode = (mode==='inspect') ? 'place' : 'inspect'; clearToolButtons(); this.classList.toggle('active', mode==='inspect'); updateHintText();
   });
 
+  // Construction du HTML des boutons : voir ui/toolbar.ts
   function renderTypeButtons(){
     const container = document.getElementById('typesContainer');
-    const keys = Object.keys(TYPES);
-    container.innerHTML = keys.map((k,i)=>
-      `<button class="type-btn${i===0?' active':''}" data-type="${k}"><span class="dot" style="background:${TYPES[k].color}"></span><span class="type-btn-label">${TYPES[k].label}</span><span class="type-btn-count"></span></button>`
-    ).join('');
-    selectedType = keys[0];
+    container.innerHTML = buildTypeButtonsHtmlCore(TYPES);
+    selectedType = Object.keys(TYPES)[0];
     placeCount = 1;
     container.querySelectorAll('.type-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
@@ -429,28 +426,9 @@ import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistor
     }
   }
 
+  // Table id->caché et application au DOM : voir ui/panel.ts
   function applyScenarioVisibility(){
-    document.getElementById('refugeBtn').classList.toggle('hidden', scenario!=='heider');
-    document.getElementById('foodBtn').classList.toggle('hidden', scenario!=='ants');
-    document.getElementById('exitBtn').classList.toggle('hidden', scenario!=='foule');
-    document.getElementById('alarmBtn').classList.toggle('hidden', scenario!=='foule');
-    // "behaviorGroupHeider" ne contient plus que le Looming, partagé entre Heider-Simmel et
-    // Poisson (réponse perceptive à une menace qui approche). Toute l'écologie proie-prédateur
-    // (prédation, faim, natalité) est désormais exclusive au scénario Poisson, pour que
-    // Heider-Simmel reste une démonstration minimale et lisible de l'expérience de 1944.
-    document.getElementById('behaviorGroupHeider').classList.toggle('hidden', scenario==='ants');
-    document.getElementById('ecologyGroupPoisson').classList.toggle('hidden', scenario!=='poisson');
-    document.getElementById('behaviorGroupAnts').classList.toggle('hidden', scenario!=='ants');
-    document.getElementById('antGrowthGroup').classList.toggle('hidden', scenario!=='ants');
-    document.getElementById('crowdGroup').classList.toggle('hidden', scenario!=='foule');
-    document.getElementById('behaviorGroupPoisson').classList.toggle('hidden', scenario!=='poisson');
-    document.getElementById('rowAntCapacity').classList.toggle('hidden', scenario!=='ants' || antNoCapacityLimit);
-    document.getElementById('rowPheromoneRange').classList.toggle('hidden', scenario!=='ants');
-    document.getElementById('legendHeider').classList.toggle('hidden', scenario!=='heider');
-    document.getElementById('legendHeiderTypes').classList.toggle('hidden', scenario!=='heider');
-    document.getElementById('legendAnts').classList.toggle('hidden', scenario!=='ants');
-    document.getElementById('legendPoisson').classList.toggle('hidden', scenario!=='poisson');
-    document.getElementById('legendFoule').classList.toggle('hidden', scenario!=='foule');
+    applyScenarioVisibilityCore(scenario, antNoCapacityLimit);
   }
 
   function switchScenario(name){
@@ -779,49 +757,8 @@ import { buildPopCounterContent as buildPopCounterContentCore, sampleStatsHistor
   // un scroll (mouvement surtout vertical), on remet le curseur à sa valeur d'avant, en continu,
   // tant que le geste reste vertical — la valeur ne se fige que si l'utilisateur fait un geste
   // clairement horizontal sur le slider, qui est alors laissé libre de répondre normalement.
-  function guardRangeFromScroll(input){
-    let startX=0, startY=0, startValue=null, mode=null; // mode: null | 'scroll' | 'slide'
-    const THRESH = 6;
 
-    function point(e){ return e.touches ? e.touches[0] : e; }
-
-    function onDown(e){
-      const p = point(e);
-      startX = p.clientX; startY = p.clientY;
-      startValue = input.value;
-      mode = null;
-    }
-    function onMove(e){
-      const p = point(e);
-      const dx = p.clientX-startX, dy = p.clientY-startY;
-      if(mode===null){
-        if(Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
-        mode = Math.abs(dy) > Math.abs(dx) ? 'scroll' : 'slide';
-      }
-      if(mode==='scroll' && input.value !== startValue){
-        input.value = startValue;
-        input.dispatchEvent(new Event('input', {bubbles:true}));
-      }
-    }
-    function onUp(){
-      if(mode==='scroll' && input.value !== startValue){
-        input.value = startValue;
-        input.dispatchEvent(new Event('input', {bubbles:true}));
-      }
-      mode = null;
-    }
-
-    input.addEventListener('touchstart', onDown, {passive:true});
-    input.addEventListener('touchmove', onMove, {passive:true});
-    input.addEventListener('touchend', onUp, {passive:true});
-    input.addEventListener('touchcancel', onUp, {passive:true});
-  }
-  document.querySelectorAll('.collapse-header').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.getElementById(btn.dataset.collapse).classList.toggle('collapsed');
-    });
-  });
-
+  setupCollapsibles();
   document.querySelectorAll('#panel input[type="range"]').forEach(guardRangeFromScroll);
 
   syncLabels();
