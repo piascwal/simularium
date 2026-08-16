@@ -1,8 +1,9 @@
 import type { Point } from './types';
 
-// Champs posés à la création (addAgent) ; beaucoup d'autres champs `_xxx` sont
-// ajoutés ensuite au fil du comportement (updateAgents, pas encore extrait —
-// voir la tranche 9 du plan de migration), d'où l'index signature en attendant.
+// Champs posés à la création (addAgent) ci-dessous ; le reste (préfixé `_`) est
+// ajouté au fil du comportement dans core/simulate.ts et lu par
+// render/draw.ts + ui/inspector.ts — tous optionnels puisqu'un agent ne porte
+// que les champs pertinents pour son type/scénario.
 export interface Agent {
   type: string;
   x: number;
@@ -17,7 +18,26 @@ export interface Agent {
   _carryingFood: boolean;
   _carryingCorpse: boolean;
   _spawnCooldown: number;
-  [key: string]: unknown;
+  _gidx?: number;
+  // Chasseur/prédateur : chasse, fuite, faim, cible verrouillée
+  _fleeing?: boolean;
+  _hunting?: boolean;
+  _hunger?: number;
+  _huntMotivation?: number;
+  _target?: { a: Agent; d: number } | null;
+  _preyDist?: number;
+  // Rendu / inspecteur : dernière vitesse et direction désirée effectivement utilisées
+  _lastSpeed?: number;
+  _lastHasDesire?: boolean;
+  _lastDesiredX?: number;
+  _lastDesiredY?: number;
+  // Anti-blocage (suivi de contour type "Bug2")
+  _escapeUntil?: number;
+  _escapeStartX?: number;
+  _escapeStartY?: number;
+  _escapeSign?: number;
+  // Colonie de fourmis : suit une piste de phéromone détectée
+  _followingTrail?: boolean;
 }
 
 export interface FoodSource extends Point {

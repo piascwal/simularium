@@ -130,7 +130,7 @@ export function render(ctx: CanvasRenderingContext2D, state: RenderState): void 
     if(grid){
       for(let y=0;y<grows;y++){
         for(let x=0;x<gcols;x++){
-          const a = gage[gidx(x,y)];
+          const a = gage![gidx(x,y)];
           if(a>0){
             ctx.fillStyle = `rgba(90,120,110,${0.05+a*0.16})`;
             ctx.fillRect(x*CELL+1, y*CELL+1, CELL-2, CELL-2);
@@ -143,7 +143,7 @@ export function render(ctx: CanvasRenderingContext2D, state: RenderState): void 
       for(let y=0;y<prows;y++){
         for(let x=0;x<pcols;x++){
           if(showPherSearch){
-            const vs = pherSearch[pidx(x,y)];
+            const vs = pherSearch![pidx(x,y)];
             if(vs>0.01){
               ctx.fillStyle = `rgba(232,150,60,${Math.min(0.4,vs*0.45)})`;
               ctx.fillRect(x*PCELL, y*PCELL, PCELL, PCELL);
@@ -244,7 +244,7 @@ export function render(ctx: CanvasRenderingContext2D, state: RenderState): void 
       ctx.beginPath(); ctx.arc(selAgent.x, selAgent.y, TYPES[selAgent.type].radius+7, 0, Math.PI*2);
       ctx.strokeStyle = 'rgba(255,214,90,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
 
-      const drawArrow = (x,y,angle,len,color)=>{
+      const drawArrow = (x: number, y: number, angle: number, len: number, color: string)=>{
         const ex = x+Math.cos(angle)*len, ey = y+Math.sin(angle)*len;
         ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ex,ey);
         ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
@@ -260,7 +260,7 @@ export function render(ctx: CanvasRenderingContext2D, state: RenderState): void 
       drawArrow(selAgent.x, selAgent.y, selAgent.angle, 26, 'rgba(255,214,90,0.95)');
       // vecteur désiré (cyan) : ce que la somme des comportements "voudrait" comme direction
       if(selAgent._lastHasDesire && (selAgent._lastDesiredX||selAgent._lastDesiredY)){
-        const da = Math.atan2(selAgent._lastDesiredY, selAgent._lastDesiredX);
+        const da = Math.atan2(selAgent._lastDesiredY ?? 0, selAgent._lastDesiredX ?? 0);
         drawArrow(selAgent.x, selAgent.y, da, 22, 'rgba(95,196,232,0.9)');
       }
       ctx.restore();

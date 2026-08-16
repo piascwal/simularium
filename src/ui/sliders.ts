@@ -9,10 +9,10 @@ import type { ScenarioId } from '../core/types';
 export function applyScenarioSliderDefaults(scenario: ScenarioId): void {
   const d = SCENARIO_SLIDER_DEFAULTS[scenario];
   if (!d) return;
-  for (const id in d) {
+  for (const [id, value] of Object.entries(d)) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) {
-      el.value = String((d as Record<string, number>)[id]);
+      el.value = String(value);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
   }

@@ -5,9 +5,21 @@ import { sampleNestDistance } from './grid/nestDistance';
 import { closestPointOnWall } from './grid/geometry';
 import { buildAgentGrid, forEachNearby, nearestBy } from './grid/agentSpatialHash';
 import { createAgent, ageCorpses as ageCorpsesCore, getMidden as getMiddenCore } from './agent';
-import { MENU_BAR_H } from './constants';
+import { MENU_BAR_H, DIST_CELL } from './constants';
 import type { Agent, FoodSource, Exit, Alarm, Corpse } from './agent';
 import type { AgentTypeDef, Obstacle, Point, ScenarioId } from './types';
+
+// forEachNearby/nearestBy (agentSpatialHash.ts) sont génériques sur T extends
+// SpatialAgent ; sans indice de type explicite à chaque site d'appel, TypeScript
+// infère T=SpatialAgent (la contrainte) plutôt que Agent, faute de mieux. Ces deux
+// wrappers fixent T=Agent une bonne fois pour tout ce fichier, plutôt que d'annoter
+// chaque callback individuellement dans le corps verbatim ci-dessous.
+function forEachNearbyAgents(x: number, y: number, radius: number, cb: (other: Agent) => void): void {
+  forEachNearby<Agent>(x, y, radius, cb);
+}
+function nearestAgentBy(agent: Agent, match: (other: Agent) => boolean, maxRadius?: number) {
+  return nearestBy<Agent>(agent, match, maxRadius);
+}
 
 // updateAgents() déplacé en bloc depuis le monolithe (tranche 9 du plan de migration),
 // structure interne intouchée. La fonction ne touche jamais le DOM — c'est justement
@@ -99,7 +111,7 @@ export function updateAgents(
   // même nom, même comportement, pour que le corps ci-dessous (verbatim) n'ait
   // besoin d'aucune modification.
   function nearest(agent: Agent, type: string) {
-    return nearestBy(agent, (o: Agent) => o.type === type);
+    return nearestAgentBy(agent, (o: Agent) => o.type === type);
   }
   function addAgent(type: string, x: number, y: number): void {
     agents.push(createAgent(type, x, y, rand));
@@ -159,8 +171,8 @@ export function updateAgents(
       a._target = fu;
     }
 
-    const toStarve = [];
-    const toEvacuate = [];
+    const toStarve: Agent[] = [];
+    const toEvacuate: Agent[] = [];
     for(const agent of agents){
       let desiredX = Math.cos(agent.angle), desiredY = Math.sin(agent.angle);
       let hasDesire = false;
@@ -242,7 +254,7 @@ export function updateAgents(
         if(!agent.isPanicking){
           const boidRadius = perception*0.55;
           let ax=0, ay=0, cx=0, cy=0, sx=0, sy=0, n=0;
-          forEachNearby(agent.x, agent.y, boidRadius, other=>{
+          forEachNearbyAgents(agent.x, agent.y, boidRadius, other=>{
             if(other===agent || other.type!=='poisson') return;
             const dx=other.x-agent.x, dy=other.y-agent.y;
             const d=Math.hypot(dx,dy);
@@ -308,7 +320,7 @@ export function updateAgents(
         // dégagée sur la sortie manque — un comportement de suivi de foule, pas d'imitation volontaire.
         let ax=0, ay=0, nH=0;
         const herdRadius = perception*0.4;
-        forEachNearby(agent.x, agent.y, herdRadius, other=>{
+        forEachNearbyAgents(agent.x, agent.y, herdRadius, other=>{
           if(other===agent || other.type!=='pieton') return;
           const d = Math.hypot(other.x-agent.x, other.y-agent.y);
           if(d < herdRadius){ ax+=Math.cos(other.angle); ay+=Math.sin(other.angle); nH++; }
@@ -334,16 +346,17 @@ export function updateAgents(
 
       if(agent.type==='gardien'){
         // Primitive "interposition" (adapted) : se place entre le chasseur en chasse et sa cible.
-        let bestCh=null, bestD=Infinity;
-        forEachNearby(agent.x, agent.y, perception, other=>{
+        let bestCh: Agent | null = null, bestD=Infinity;
+        forEachNearbyAgents(agent.x, agent.y, perception, other=>{
           if(other.type==='chasseur' && other._hunting){
             const d=Math.hypot(other.x-agent.x, other.y-agent.y);
             if(d<perception && d<bestD){ bestD=d; bestCh=other; }
           }
         });
-        if(bestCh && bestCh._target){
-          const fu = bestCh._target.a;
-          const mx=(bestCh.x+fu.x)/2, my=(bestCh.y+fu.y)/2;
+        const bc = bestCh as Agent | null;
+        if(bc && bc._target){
+          const fu = bc._target.a;
+          const mx=(bc.x+fu.x)/2, my=(bc.y+fu.y)/2;
           const dx=mx-agent.x, dy=my-agent.y;
           const d=Math.hypot(dx,dy)||1;
           desiredX += (dx/d)*1.2; desiredY += (dy/d)*1.2; hasDesire=true;
@@ -371,7 +384,7 @@ export function updateAgents(
 
         // Primitive "fuir" (established, Dawkins & Krebs 1979) réutilisée telle quelle :
         // un intrus détecté à proximité prend le pas sur le butinage, sans exception.
-        const intrusHit = nearestBy(agent, o=>o.type==='intrus', perception*0.6);
+        const intrusHit = nearestAgentBy(agent, o=>o.type==='intrus', perception*0.6);
         const nearestIntrus = intrusHit ? intrusHit.a : null;
         if(nearestIntrus){
           const dx=agent.x-nearestIntrus.x, dy=agent.y-nearestIntrus.y;
@@ -483,7 +496,7 @@ export function updateAgents(
       if(agent.type==='soldat'){
         // Primitive "poursuivre" (adapted, Heider & Simmel 1944 + Reynolds 1987) réutilisée telle
         // quelle : le soldat n'a de rôle réel que s'il y a une menace à intercepter.
-        const intrusHit = nearestBy(agent, o=>o.type==='intrus', perception);
+        const intrusHit = nearestAgentBy(agent, o=>o.type==='intrus', perception);
         const intrusTarget = intrusHit ? intrusHit.a : null;
         if(intrusTarget){
           const dx=intrusTarget.x-agent.x, dy=intrusTarget.y-agent.y;
@@ -505,7 +518,7 @@ export function updateAgents(
       if(agent.type==='intrus'){
         // L'intrus traque les fourmis non-combattantes isolées ; sans cible, il erre (primitive
         // "errance", adapted). C'est ce qui donne au soldat quelque chose à intercepter.
-        const targetHit = nearestBy(agent, o=>o.type==='ouvriere' || o.type==='eclaireuse' || o.type==='nourrice' || o.type==='fossoyeuse', perception);
+        const targetHit = nearestAgentBy(agent, o=>o.type==='ouvriere' || o.type==='eclaireuse' || o.type==='nourrice' || o.type==='fossoyeuse', perception);
         const target = targetHit ? targetHit.a : null;
         if(target){
           const dx=target.x-agent.x, dy=target.y-agent.y;
@@ -519,7 +532,7 @@ export function updateAgents(
 
       if(agent.type==='nourrice'){
         // Reste au nid pour s'occuper du couvain ; ne butine jamais.
-        const nourriceIntrusHit = nearestBy(agent, o=>o.type==='intrus', perception*0.6);
+        const nourriceIntrusHit = nearestAgentBy(agent, o=>o.type==='intrus', perception*0.6);
         const nearestIntrus = nourriceIntrusHit ? nourriceIntrusHit.a : null;
         if(nearestIntrus){
           const dx=agent.x-nearestIntrus.x, dy=agent.y-nearestIntrus.y;
@@ -587,7 +600,7 @@ export function updateAgents(
 
       // réaction à distance classique — primitives "poursuivre" / "fuir" selon le signe de la relation
       if(!agent.isPanicking){
-        forEachNearby(agent.x, agent.y, perception, other=>{
+        forEachNearbyAgents(agent.x, agent.y, perception, other=>{
           if(other===agent) return;
           const dx = other.x-agent.x, dy = other.y-agent.y;
           const d = Math.hypot(dx,dy);
@@ -628,7 +641,7 @@ export function updateAgents(
         // Fin anticipée sur vrai progrès (Bug2) : une fois assez éloigné du point de blocage,
         // on considère le contournement réussi et on rend la main à la recherche d'objectif.
         if(agent._escapeStartX!==undefined){
-          const escapedDist = Math.hypot(agent.x-agent._escapeStartX, agent.y-agent._escapeStartY);
+          const escapedDist = Math.hypot(agent.x-agent._escapeStartX, agent.y-agent._escapeStartY!);
           if(escapedDist > 45) agent._escapeUntil = 0;
         }
       }
@@ -683,7 +696,7 @@ export function updateAgents(
       if(agent.isPanicking) {
         currentSpeed *= 1.8;
       }
-      if(agent.type==='predateur' && agent._preyDist < 45){
+      if(agent.type==='predateur' && agent._preyDist! < 45){
         // Primitive "sursautAttaque" (established, Domenici & Blake 1997 — "fast-start"/C-start
         // des poissons prédateurs) : accélération brève réservée à l'attaque finale à courte
         // distance, pas une vitesse de croisière soutenue — pondérée par la motivation de chasse.
@@ -695,7 +708,7 @@ export function updateAgents(
         // effective chute — c'est ce mécanisme, pas la panique elle-même, qui crée l'embouteillage
         // paradoxal à un goulot d'étranglement.
         let crowdCount = 0;
-        forEachNearby(agent.x, agent.y, 18, other=>{
+        forEachNearbyAgents(agent.x, agent.y, 18, other=>{
           if(other===agent || other.type!=='pieton') return;
           if(Math.hypot(other.x-agent.x, other.y-agent.y) < 18) crowdCount++;
         });
@@ -797,8 +810,8 @@ export function updateAgents(
     for(let iter=0; iter<iterations; iter++){
       for(let i=0;i<agents.length;i++){
         const a = agents[i];
-        forEachNearby(a.x, a.y, COLLISION_SEARCH_RADIUS, other=>{
-          if(other._gidx <= a._gidx) return; // ordre stable de la grille : chaque paire traitée une fois
+        forEachNearbyAgents(a.x, a.y, COLLISION_SEARCH_RADIUS, other=>{
+          if(other._gidx! <= a._gidx!) return; // ordre stable de la grille : chaque paire traitée une fois
           const b = other;
           const dx=b.x-a.x, dy=b.y-a.y;
           let d=Math.hypot(dx,dy);
@@ -817,7 +830,7 @@ export function updateAgents(
               else if(b.type==='predateur' && a.type==='poisson'){ predator=b; prey=a; }
               if(predator && prey){
                 let neighborCount = 0;
-                forEachNearby(prey.x, prey.y, 45, other2=>{
+                forEachNearbyAgents(prey.x, prey.y, 45, other2=>{
                   if(other2===prey || other2.type!=='poisson') return;
                   if(Math.hypot(other2.x-prey.x, other2.y-prey.y) < 45) neighborCount++;
                 });
@@ -833,7 +846,7 @@ export function updateAgents(
             // à défaut d'interception, l'intrus élimine la fourmi non-combattante qu'il rattrape,
             // qui laisse un cadavre au sol (voir primitive "necrophorese").
             if(scenario==='ants'){
-              const isVulnerable = t => ['ouvriere','eclaireuse','nourrice','fossoyeuse'].includes(t);
+              const isVulnerable = (t: string) => ['ouvriere','eclaireuse','nourrice','fossoyeuse'].includes(t);
               if(a.type==='soldat' && b.type==='intrus') toEat.add(b);
               else if(b.type==='soldat' && a.type==='intrus') toEat.add(a);
               else if(a.type==='intrus' && isVulnerable(b.type)){ toEat.add(b); corpses.push({x:b.x,y:b.y,age:0}); }
