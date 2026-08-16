@@ -10,6 +10,7 @@ import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDis
 import { buildAgentGrid, forEachNearby, nearestBy } from './core/grid/agentSpatialHash';
 import { SCENARIO_TYPES, SCENARIO_SLIDER_DEFAULTS } from './core/scenarios';
 import { PRIMITIVES, statusMeta } from './core/primitives';
+import { createAgent, ageCorpses as ageCorpsesCore, getMidden as getMiddenCore } from './core/agent';
 (function(){
   const canvas = document.getElementById('cv');
   const ctx = canvas.getContext('2d');
@@ -65,26 +66,13 @@ import { PRIMITIVES, statusMeta } from './core/primitives';
   let antCarryingCapacity = 26;
   let antNoCapacityLimit = false;
   let corpses = []; // {x,y,age} — cadavres en attente d'évacuation (nécrophorèse)
-  function getMidden(){ return { x: worldW*0.92, y: worldH*0.92 }; }
+  function getMidden(){ return getMiddenCore(worldW, worldH); }
   function ageCorpses(dt){
-    for(const c of corpses) c.age += dt;
-    corpses = corpses.filter(c => c.age < 20); // décomposition naturelle après 20s sans évacuation
+    corpses = ageCorpsesCore(corpses, dt);
   }
 
   function addAgent(type,x,y){
-    agents.push({
-      type, x, y,
-      angle: rand()*Math.PI*2,
-      wander: rand()*1000,
-      id: rand().toString(36).slice(2),
-      isPanicking: false,
-      _stuckTimer: 0,
-      _lastCheckX: x,
-      _lastCheckY: y,
-      _carryingFood: false,
-      _carryingCorpse: false,
-      _spawnCooldown: 0
-    });
+    agents.push(createAgent(type, x, y, rand));
   }
 
   function reset(){
