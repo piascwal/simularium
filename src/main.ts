@@ -320,12 +320,15 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   });
 
   const SPEED_STEPS = [1,2,3,4];
+  // Synchronise les deux affichages de la vitesse (bouton du panneau + menu rapide mobile).
   function updateSpeedBtnText(){
     const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
     const arrows = '⏩'.repeat(i+1);
     byId('speedCycleBtn').textContent = `${arrows} Vitesse ×${loopState.simSpeedMultiplier}`;
+    byId('qmSpeed').textContent = `×${loopState.simSpeedMultiplier}`;
   }
-  // direction=1 : bouton dans le panneau (cycle), aussi réutilisé par les raccourcis +/- (desktop).
+  // direction=1 : bouton dans le panneau (cycle) et menu rapide ; aussi réutilisé par les
+  // raccourcis +/- (desktop).
   function cycleSpeed(direction: 1 | -1){
     const i = SPEED_STEPS.indexOf(loopState.simSpeedMultiplier);
     const next = (i + direction + SPEED_STEPS.length) % SPEED_STEPS.length;
@@ -684,6 +687,8 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   canvas.addEventListener('pointerleave', ()=>{ cancelLongPress(); stopDrawing(); });
 
   byId('qmRun').addEventListener('click', ()=>{ toggleRun(); closeQuickMenu(); });
+  // Reste ouvert après le clic : on veut pouvoir cycler ×1→×4 sans réarmer un appui long à chaque cran.
+  byId('qmSpeed').addEventListener('click', ()=> cycleSpeed(1));
   byId('qmInspect').addEventListener('click', ()=>{ toggleInspectMode(); closeQuickMenu(); });
   byId('qmPlace').addEventListener('click', ()=>{ backToPlaceMode(); closeQuickMenu(); });
   document.addEventListener('pointerdown', (e)=>{
