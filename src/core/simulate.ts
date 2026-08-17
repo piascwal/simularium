@@ -881,8 +881,13 @@ export function updateAgents(
         if(agent.type==='fugitif'){
           const ch = nearest(agent,'chasseur');
           if(ch && ch.d < 60) turnRate = 7.5*dt;
-          
+
           if(agent.isPanicking) turnRate = 18.0 * dt;
+          // Titubement après une bousculade au contact (voir plus bas) : le cap reste bloqué près
+          // de la direction de la poussée, même en pleine panique — sans cette priorité, le taux de
+          // rotation de panique (18 rad/s) effacerait le titubement en une fraction de frame,
+          // rendant le contact invisible dans la trajectoire malgré le déplacement brusque.
+          if(agent._stumbleUntil && t < agent._stumbleUntil) turnRate = 0.6*dt;
         }
         const turnDelta = Math.max(-turnRate, Math.min(turnRate, diff));
         agent.angle += turnDelta;
@@ -908,6 +913,13 @@ export function updateAgents(
         // des poissons prédateurs) : accélération brève réservée à l'attaque finale à courte
         // distance, pas une vitesse de croisière soutenue — pondérée par la motivation de chasse.
         currentSpeed *= 1 + 0.7*(agent._huntMotivation ?? 1);
+      }
+      if(agent.type==='chasseur' && agent._hunting && !agent._fleeing && agent._target && agent._target.d < 45){
+        // Même primitive "sursautAttaque" que le prédateur (pas de motivation de chasse ici, donc
+        // un facteur fixe) : l'accélération finale juste avant le contact donne le "sentiment de
+        // force" qui enclenche la bousculade ci-dessous, plutôt qu'une approche à vitesse constante
+        // qui rendrait le contact anodin.
+        currentSpeed *= 1.7;
       }
       if(agent.type==='pieton'){
         // Primitive "congestionRalentissement" (established, Helbing, Farkas & Vicsek 2000 —
@@ -1104,6 +1116,28 @@ export function updateAgents(
               else if(b.type==='soldat' && a.type==='intrus') toEat.add(a);
               else if(a.type==='intrus' && isVulnerable(b.type)){ toEat.add(b); corpses.push({x:b.x,y:b.y,age:0}); }
               else if(b.type==='intrus' && isVulnerable(a.type)){ toEat.add(a); corpses.push({x:a.x,y:a.y,age:0}); }
+            }
+            // Primitive "bousculadeContact" (adapted, contact physique du film original de Heider
+            // & Simmel 1944) : le contact ne se contente pas d'empêcher la superposition (comme la
+            // correction générique plus bas), il projette le fugitif au loin — le "sentiment de
+            // force" du chasseur, précédé du sursaut d'attaque ci-dessus. Titubement bref (cap
+            // bloqué, voir la limite de turnRate plus haut) : sans lui, la panique réoriente le
+            // fugitif vers la fuite en une fraction de frame et la poussée ne se remarque jamais
+            // dans la trajectoire. Garde sur le titubement précédent pour ne pas mitrailler une
+            // poussée par frame tant que le chasseur reste au contact.
+            if(scenario==='heider'){
+              let chasseurAgent: Agent | null = null, fugitifAgent: Agent | null = null;
+              if(a.type==='chasseur' && b.type==='fugitif'){ chasseurAgent=a; fugitifAgent=b; }
+              else if(b.type==='chasseur' && a.type==='fugitif'){ chasseurAgent=b; fugitifAgent=a; }
+              if(chasseurAgent && fugitifAgent && (!fugitifAgent._stumbleUntil || t>=fugitifAgent._stumbleUntil)){
+                const SHOVE_DIST = 30;
+                const pdx = fugitifAgent.x-chasseurAgent.x, pdy = fugitifAgent.y-chasseurAgent.y;
+                const pd = Math.hypot(pdx,pdy)||1;
+                fugitifAgent.x += (pdx/pd)*SHOVE_DIST;
+                fugitifAgent.y += (pdy/pd)*SHOVE_DIST;
+                fugitifAgent.angle = Math.atan2(pdy/pd, pdx/pd);
+                fugitifAgent._stumbleUntil = t + 0.4;
+              }
             }
             if(d<0.0001){ d=0.0001; }
             const nx=dx/d, ny=dy/d;

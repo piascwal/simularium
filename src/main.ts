@@ -141,7 +141,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       if(loomingMode){ ids.push('looming'); ids.push('fuir'); }
       return ids;
     }
-    const ids = ['poursuivre','fuir','interposition','errance','evitementObstacle','separationCorps','antiBlocage', boundaryId];
+    const ids = ['poursuivre','fuir','interposition','errance','evitementObstacle','separationCorps','antiBlocage','sursautAttaque','bousculadeContact', boundaryId];
     if(loomingMode) ids.push('looming');
     if(doors.length>0) ids.push('porteRefuge');
     return ids;

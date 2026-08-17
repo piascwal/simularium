@@ -35,6 +35,9 @@ export interface Agent {
   _preyDist?: number;
   // Gardien : chasseur actuellement défendu contre (Heider-Simmel)
   _defendTarget?: Agent | null;
+  // Fugitif : titube après avoir été bousculé par le chasseur au contact (Heider-Simmel) — le cap
+  // reste bloqué le temps du titubement, voir la limite de turnRate dans simulate.ts
+  _stumbleUntil?: number;
   // Rendu / inspecteur : dernière vitesse et direction désirée effectivement utilisées
   _lastSpeed?: number;
   _lastHasDesire?: boolean;
