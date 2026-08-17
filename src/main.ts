@@ -2,8 +2,8 @@
 // Corps du moteur historique (monofichier), déplacé verbatim ici en Phase 0.
 // Sera découpé en modules typés core/render/ui dans la Phase 1 (voir le plan de migration).
 import { rand } from './core/rng';
-import { MENU_BAR_H, CELL, PCELL, DIST_CELL, AGENT_CELL, OBSTACLE_DRAW_SPACING } from './core/constants';
-import { closestPointOnSegment, closestPointOnWall } from './core/grid/geometry';
+import { MENU_BAR_H, CELL, PCELL, DIST_CELL, AGENT_CELL, OBSTACLE_DRAW_SPACING, OBSTACLE_FUSION_DIST } from './core/constants';
+import { closestPointOnSegment, closestPointOnWall, mergeTouchingObstacles } from './core/grid/geometry';
 import { gcols, grows, grid, gage, initGrid, gidx, stepConway, disturbGridAt } from './core/grid/conway';
 import { pcols, prows, pidx, pherReturn, pherSearch, initPheromoneGrid, depositPheromone, samplePheromone, evaporatePheromone } from './core/grid/pheromone';
 import { sampleNestDistance, maybeRecomputeNestField } from './core/grid/nestDistance';
@@ -704,7 +704,14 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     }
   });
 
-  function stopDrawing(){ isDrawing = false; lastDrawPoint = null; currentWall = null; recomputeNestFieldForCurrentState(); }
+  function stopDrawing(){
+    if(mode==='obstacle' && currentWall){
+      // Fusionne avec un obstacle voisin si ce tracé vient d'en toucher un par une extrémité
+      // libre — voir mergeTouchingObstacles (core/grid/geometry.ts) pour le raisonnement complet.
+      obstacles = mergeTouchingObstacles(obstacles, currentWall, OBSTACLE_FUSION_DIST);
+    }
+    isDrawing = false; lastDrawPoint = null; currentWall = null; recomputeNestFieldForCurrentState();
+  }
   canvas.addEventListener('pointerup', ()=>{
     if(longPressPending){
       const pending = longPressPending;
