@@ -24,7 +24,7 @@ import { applyScenarioSliderDefaults as applyScenarioSliderDefaultsCore } from '
 import { createLoopState as createLoopStateCore, createLoop as createLoopCore } from './ui/loop';
 import { resolveShortcut } from './ui/shortcuts';
 import { computeQuickMenuPosition } from './ui/quickMenu';
-import type { Agent, FoodSource, Exit, Alarm, Corpse } from './core/agent';
+import type { Agent, FoodSource, Exit, Alarm, Corpse, Door } from './core/agent';
 import type { ScenarioId, AgentTypeDef, Obstacle, Point } from './core/types';
 
 // Raccourci typé pour document.getElementById : tous les ids référencés ici sont
@@ -86,6 +86,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   let agents: Agent[] = [];
   let refuge: (Point & { r: number }) | null = null;
   let obstacles: Obstacle[] = [];
+  let doors: Door[] = [];      // Heider-Simmel : {points,thickness,open} — bloque comme un mur quand fermée
   let food: FoodSource[] = [];       // colonie de fourmis : {x,y,r,qty}
   let exits: Exit[] = [];      // foule humaine : {x,y,r} — sorties recherchées par les piétons
   let alarms: Alarm[] = [];     // foule humaine : {x,y,r} — déclenche la panique à proximité
@@ -105,6 +106,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     agents = [];
     refuge = null;
     obstacles = [];
+    doors = [];
     food = [];
     exits = [];
     alarms = [];
@@ -141,6 +143,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     }
     const ids = ['poursuivre','fuir','interposition','errance','evitementObstacle','separationCorps','antiBlocage', boundaryId];
     if(loomingMode) ids.push('looming');
+    if(doors.length>0) ids.push('porteRefuge');
     return ids;
   }
 
@@ -169,7 +172,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   // (un import ne peut pas être réassigné par le module qui l'importe).
   function updateAgents(dt: number, perception: number, forceMag: number, speed: number, panicRadius: number){
     const state = {
-      agents, corpses, obstacles, food, exits, alarms, refuge,
+      agents, corpses, obstacles, doors, food, exits, alarms, refuge,
       scenario, TYPES, worldW, worldH, zoneScale, t,
       boundaryMode, avoidanceSensitivity,
       loomingMode, predationMode, popDynamicsMode,
@@ -199,7 +202,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   function render(){
     renderCore(ctx, {
       W, H, zoneScale, worldW, worldH, t, scenario, TYPES, agents,
-      obstacles, food, exits, alarms, corpses, refuge,
+      obstacles, doors, food, exits, alarms, corpses, refuge,
       showPherSearch, showPherReturn, selectedTrail, selectedAgentId,
     });
   }
@@ -217,7 +220,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   // ---------- UI ----------
   let selectedType = 'chasseur';
   let placeCount = 1;
-  let mode: 'place' | 'inspect' | 'refuge' | 'food' | 'exit' | 'alarm' | 'obstacle' | 'erase' = 'place';
+  let mode: 'place' | 'inspect' | 'refuge' | 'food' | 'exit' | 'alarm' | 'obstacle' | 'erase' | 'porte' = 'place';
   let loomingMode = true;
   let predationMode = false;
   let popDynamicsMode = false;
@@ -353,33 +356,43 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     food: 'Touche pour placer une source de nourriture.',
     exit: 'Touche pour placer une sortie.',
     alarm: 'Touche pour placer une alarme.',
-    erase: 'Touche ou glisse pour effacer un agent, un obstacle ou de la nourriture.'
+    erase: 'Touche ou glisse pour effacer un agent, un obstacle, une porte ou de la nourriture.',
+    porte: 'Touche ou glisse pour tracer une porte (fermée par défaut, s’ouvre au passage du fugitif).'
   };
   function updateHintText(){
     byId('hint').textContent = HINT_TEXTS[mode] || HINT_TEXTS.place;
   }
 
-  function clearToolButtons(){
-    byId('inspectBtn').classList.remove('active');
-    byId('refugeBtn').classList.remove('active');
-    byId('foodBtn').classList.remove('active');
-    byId('exitBtn').classList.remove('active');
-    byId('alarmBtn').classList.remove('active');
-    byId('obstacleBtn').classList.remove('active');
-    byId('eraseBtn').classList.remove('active');
-    byId('rowThickness').classList.add('hidden');
+  // Source unique de vérité pour tous les états "actif" liés au mode courant (outils ET type
+  // d'agent sélectionné) — avant, chaque bouton gérait sa propre classe active indépendamment,
+  // si bien que passer en mode obstacle/effacer laissait le dernier type d'agent cliqué visible
+  // comme actif (aucun code ne le désélectionnait), donnant l'impression trompeuse qu'un clic sur
+  // la scène allait encore placer un agent.
+  function updateToolActiveStates(){
+    byId('inspectBtn').classList.toggle('active', mode==='inspect');
+    byId('refugeBtn').classList.toggle('active', mode==='refuge');
+    byId('foodBtn').classList.toggle('active', mode==='food');
+    byId('exitBtn').classList.toggle('active', mode==='exit');
+    byId('alarmBtn').classList.toggle('active', mode==='alarm');
+    byId('obstacleBtn').classList.toggle('active', mode==='obstacle');
+    byId('eraseBtn').classList.toggle('active', mode==='erase');
+    byId('porteBtn').classList.toggle('active', mode==='porte');
+    byId('rowThickness').classList.toggle('hidden', mode!=='obstacle' && mode!=='porte');
+    byId('typesContainer').querySelectorAll('.type-btn').forEach((bEl)=>{
+      const b = bEl as HTMLElement;
+      b.classList.toggle('active', mode==='place' && b.dataset.type===selectedType);
+    });
   }
 
   function toggleInspectMode(){
     mode = (mode==='inspect') ? 'place' : 'inspect';
-    clearToolButtons();
-    byId('inspectBtn').classList.toggle('active', mode==='inspect');
+    updateToolActiveStates();
     updateHintText();
   }
   byId('inspectBtn').addEventListener('click', toggleInspectMode);
 
   function backToPlaceMode(){
-    mode = 'place'; clearToolButtons(); updateHintText();
+    mode = 'place'; updateToolActiveStates(); updateHintText();
   }
 
   // Construction du HTML des boutons : voir ui/toolbar.ts
@@ -400,14 +413,11 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
           placeCount = 1;
         }
         container.querySelectorAll('.type-btn').forEach((bEl)=>{
-          const b = bEl as HTMLElement;
-          b.classList.remove('active');
-          (b.querySelector('.type-btn-count') as HTMLElement).textContent = '';
+          (bEl.querySelector('.type-btn-count') as HTMLElement).textContent = '';
         });
-        btn.classList.add('active');
         (btn.querySelector('.type-btn-count') as HTMLElement).textContent = placeCount>1 ? `×${placeCount}` : '';
         selectedType = btn.dataset.type as string;
-        mode = 'place'; clearToolButtons(); updateHintText();
+        mode = 'place'; updateToolActiveStates(); updateHintText();
       });
     });
   }
@@ -459,7 +469,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     initPheromoneGrid(worldW, worldH);
     renderTypeButtons();
     applyScenarioVisibility();
-    mode = 'place'; clearToolButtons(); updateHintText();
+    mode = 'place'; updateToolActiveStates(); updateHintText();
     setupDefaultPopulation();
     recomputeNestFieldForCurrentState();
     applyScenarioSliderDefaults();
@@ -502,32 +512,35 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   });
 
   byId('refugeBtn').addEventListener('click', function(){
-    mode = (mode==='refuge') ? 'place' : 'refuge'; clearToolButtons(); this.classList.toggle('active', mode==='refuge'); updateHintText();
+    mode = (mode==='refuge') ? 'place' : 'refuge'; updateToolActiveStates(); updateHintText();
   });
   byId('exitBtn').addEventListener('click', function(){
-    mode = (mode==='exit') ? 'place' : 'exit'; clearToolButtons(); this.classList.toggle('active', mode==='exit'); updateHintText();
+    mode = (mode==='exit') ? 'place' : 'exit'; updateToolActiveStates(); updateHintText();
   });
   byId('alarmBtn').addEventListener('click', function(){
-    mode = (mode==='alarm') ? 'place' : 'alarm'; clearToolButtons(); this.classList.toggle('active', mode==='alarm'); updateHintText();
+    mode = (mode==='alarm') ? 'place' : 'alarm'; updateToolActiveStates(); updateHintText();
   });
   byId('foodBtn').addEventListener('click', function(){
-    mode = (mode==='food') ? 'place' : 'food'; clearToolButtons(); this.classList.toggle('active', mode==='food'); updateHintText();
+    mode = (mode==='food') ? 'place' : 'food'; updateToolActiveStates(); updateHintText();
   });
   byId('obstacleBtn').addEventListener('click', function(){
-    mode = (mode==='obstacle') ? 'place' : 'obstacle'; clearToolButtons(); this.classList.toggle('active', mode==='obstacle'); updateHintText();
-    byId('rowThickness').classList.toggle('hidden', mode!=='obstacle');
+    mode = (mode==='obstacle') ? 'place' : 'obstacle'; updateToolActiveStates(); updateHintText();
   });
   byId<HTMLInputElement>('thickness').addEventListener('input', function(){
     obstacleThickness = +this.value;
     byId('vThickness').textContent = this.value + 'px';
   });
   byId('eraseBtn').addEventListener('click', function(){
-    mode = (mode==='erase') ? 'place' : 'erase'; clearToolButtons(); this.classList.toggle('active', mode==='erase'); updateHintText();
+    mode = (mode==='erase') ? 'place' : 'erase'; updateToolActiveStates(); updateHintText();
+  });
+  byId('porteBtn').addEventListener('click', function(){
+    mode = (mode==='porte') ? 'place' : 'porte'; updateToolActiveStates(); updateHintText();
   });
 
   let isDrawing = false;
   let lastDrawPoint: Point | null = null;
   let currentWall: Obstacle | null = null;
+  let currentDoor: Door | null = null;
   let obstacleThickness = 20;
 
   // pointerWorldPos / eraseAt / findAgentNear : voir ui/canvasInput.ts
@@ -535,7 +548,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     return pointerWorldPosCore(e, canvas, zoneScale);
   }
   function eraseAt(x: number, y: number){
-    const state = { agents, refuge, obstacles, food, exits, alarms };
+    const state = { agents, refuge, obstacles, doors, food, exits, alarms };
     eraseAtCore(state, zoneScale, x, y);
     refuge = state.refuge;
   }
@@ -676,6 +689,15 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       canvas.setPointerCapture(e.pointerId);
       return;
     }
+    if(mode==='porte'){
+      // Même geste de tracé que l'obstacle, mais dans son propre tableau : une porte porte un
+      // état ouvert/fermé qu'un mur ordinaire n'a pas, elle ne fusionne donc jamais avec les murs.
+      currentDoor = { points:[{x,y}], thickness: obstacleThickness, open: false };
+      doors.push(currentDoor);
+      isDrawing = true; lastDrawPoint = {x,y};
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     longPressTriggered = false;
     longPressPending = { x, y, clientX: e.clientX, clientY: e.clientY };
     longPressTimer = setTimeout(()=>{
@@ -698,6 +720,9 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     if(mode==='obstacle' && currentWall && d>=OBSTACLE_DRAW_SPACING){
       currentWall.points.push({x,y});
       lastDrawPoint = {x,y};
+    } else if(mode==='porte' && currentDoor && d>=OBSTACLE_DRAW_SPACING){
+      currentDoor.points.push({x,y});
+      lastDrawPoint = {x,y};
     } else if(mode==='erase' && d>=10){
       eraseAt(x,y);
       lastDrawPoint = {x,y};
@@ -710,7 +735,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       // libre — voir mergeTouchingObstacles (core/grid/geometry.ts) pour le raisonnement complet.
       obstacles = mergeTouchingObstacles(obstacles, currentWall, OBSTACLE_FUSION_DIST);
     }
-    isDrawing = false; lastDrawPoint = null; currentWall = null; recomputeNestFieldForCurrentState();
+    isDrawing = false; lastDrawPoint = null; currentWall = null; currentDoor = null; recomputeNestFieldForCurrentState();
   }
   canvas.addEventListener('pointerup', ()=>{
     if(longPressPending){

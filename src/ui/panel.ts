@@ -12,6 +12,7 @@ export function computeScenarioVisibility(scenario: ScenarioId, antNoCapacityLim
     foodBtn: scenario !== 'ants',
     exitBtn: scenario !== 'foule',
     alarmBtn: scenario !== 'foule',
+    porteBtn: scenario !== 'heider',
     // "behaviorGroupHeider" ne contient plus que le Looming, partagé entre Heider-Simmel et
     // Poisson (réponse perceptive à une menace qui approche). Toute l'écologie proie-prédateur
     // (prédation, faim, natalité) est désormais exclusive au scénario Poisson, pour que

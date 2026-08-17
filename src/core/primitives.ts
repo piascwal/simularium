@@ -34,6 +34,12 @@ export const PRIMITIVES: Record<string, Primitive> = {
     ref: 'Heider & Simmel 1944 (rôle de "protecteur" perçu)',
     desc: 'Un agent se place entre un prédateur et sa cible.'
   },
+  porteRefuge: {
+    label: 'Porte de refuge',
+    status: 'artifact',
+    ref: 'Inspiré de la maison à porte du film original de Heider & Simmel 1944',
+    desc: 'Bloque comme un mur tant qu’elle est fermée ; s’ouvre d’elle-même à l’approche d’un fugitif si aucun chasseur n’est déjà proche, puis se referme après un court délai — que le chasseur ait eu le temps de s’y engouffrer ou non.'
+  },
   looming: {
     label: 'Réponse au looming',
     status: 'established',

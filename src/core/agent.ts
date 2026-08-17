@@ -64,6 +64,18 @@ export interface Alarm extends Point {
   r: number;
 }
 
+// Porte (Heider-Simmel) : tracé à main levée comme un obstacle (mêmes champs points/thickness,
+// mêmes fonctions géométriques réutilisées côté simulate.ts) mais avec un état ouvert/fermé —
+// bloque comme un mur quand fermée, laisse passer quand ouverte. _openUntil (horloge de
+// simulation `t`, pas une durée) posé par la pré-passe de simulate.ts qui gère l'ouverture
+// automatique ; absent tant que la porte n'a jamais été ouverte.
+export interface Door {
+  points: Point[];
+  thickness: number;
+  open: boolean;
+  _openUntil?: number;
+}
+
 export interface Corpse extends Point {
   age: number;
 }

@@ -7,7 +7,7 @@ import { closestPointOnWall } from './grid/geometry';
 import { buildAgentGrid, forEachNearby, nearestBy } from './grid/agentSpatialHash';
 import { createAgent, ageCorpses as ageCorpsesCore, getMidden as getMiddenCore } from './agent';
 import { MENU_BAR_H, DIST_CELL } from './constants';
-import type { Agent, FoodSource, Exit, Alarm, Corpse } from './agent';
+import type { Agent, FoodSource, Exit, Alarm, Corpse, Door } from './agent';
 import type { AgentTypeDef, Obstacle, Point, ScenarioId } from './types';
 
 // forEachNearby/nearestBy (agentSpatialHash.ts) sont génériques sur T extends
@@ -73,6 +73,7 @@ export interface SimulationState {
   corpses: Corpse[];
   // Entités (lecture seule ici — mutées en place mais jamais réassignées)
   obstacles: Obstacle[];
+  doors: Door[];
   food: FoodSource[];
   exits: Exit[];
   alarms: Alarm[];
@@ -129,7 +130,7 @@ export function updateAgents(
   panicRadius: number,
 ): void {
   let {
-    agents, corpses, obstacles, food, exits, alarms, refuge,
+    agents, corpses, obstacles, doors, food, exits, alarms, refuge,
     scenario, TYPES, worldW, worldH, zoneScale, t,
     boundaryMode, avoidanceSensitivity,
     loomingMode, predationMode, popDynamicsMode,
@@ -236,6 +237,41 @@ export function updateAgents(
       a._defendTarget = bestCh;
       if(bestCh) bestCh._fleeing = true;
     }
+
+    // --- pré-passe : portes (Heider-Simmel) ---
+    // Une porte fermée bloque comme un mur (voir blockingObstacles ci-dessous) ; elle s'ouvre
+    // d'elle-même quand un fugitif s'en approche ET qu'aucun chasseur n'est déjà là pour s'y
+    // engouffrer aussi — sans ce garde-fou, la porte s'ouvrirait dès qu'un chasseur approche pour
+    // traquer, ce qui reviendrait à annuler tout son rôle protecteur. Se referme après un délai
+    // fixe une fois ouverte, que le fugitif (et parfois le chasseur, à la faveur du délai) ait eu
+    // le temps de passer ou non : c'est ce délai qui crée le suspense (la porte se referme-t-elle
+    // à temps ?), plutôt qu'une fermeture instantanée dès que le fugitif l'a franchie.
+    const DOOR_OPEN_TRIGGER_DIST = 50;
+    const DOOR_OPEN_BLOCK_DIST = 90;
+    const DOOR_OPEN_DURATION = 2.5;
+    if(scenario==='heider' && doors.length>0){
+      for(const door of doors){
+        const p0 = door.points[0], p1 = door.points[door.points.length-1];
+        const midX = (p0.x+p1.x)/2, midY = (p0.y+p1.y)/2;
+        if(!door.open){
+          let nearestFugDist = Infinity, nearestChaDist = Infinity;
+          for(const a of agents){
+            if(a.type==='fugitif') nearestFugDist = Math.min(nearestFugDist, Math.hypot(a.x-midX, a.y-midY));
+            else if(a.type==='chasseur') nearestChaDist = Math.min(nearestChaDist, Math.hypot(a.x-midX, a.y-midY));
+          }
+          if(nearestFugDist < DOOR_OPEN_TRIGGER_DIST && nearestChaDist > DOOR_OPEN_BLOCK_DIST){
+            door.open = true;
+            door._openUntil = t + DOOR_OPEN_DURATION;
+          }
+        } else if(t >= (door._openUntil ?? 0)){
+          door.open = false;
+        }
+      }
+    }
+    // Liste de blocage physique effective pour cette frame : les murs plus les portes actuellement
+    // fermées. Une porte ouverte ne bloque plus rien, exactement comme si elle n'existait pas.
+    const closedDoors = doors.filter(d=>!d.open);
+    const blockingObstacles: Obstacle[] = closedDoors.length ? [...obstacles, ...closedDoors] : obstacles;
 
     const toStarve: Agent[] = [];
     const toEvacuate: Agent[] = [];
@@ -757,7 +793,7 @@ export function updateAgents(
       }
 
       // Primitive "evitementObstacle" (adapted)
-      for(const o of obstacles){
+      for(const o of blockingObstacles){
         const cp = closestPointOnWall(agent.x, agent.y, o.points);
         const dx = agent.x-cp.x, dy = agent.y-cp.y;
         const d = Math.hypot(dx,dy);
@@ -797,7 +833,7 @@ export function updateAgents(
       }
       if(agent._escapeUntil && t < agent._escapeUntil){
         let bdO=Infinity, obsCp=null;
-        for(const o of obstacles){
+        for(const o of blockingObstacles){
           const cp = closestPointOnWall(agent.x, agent.y, o.points);
           const d = Math.hypot(agent.x-cp.x, agent.y-cp.y);
           if(d<bdO){ bdO=d; obsCp=cp; }
@@ -943,7 +979,7 @@ export function updateAgents(
           // aucun mur à portée ou aucun champ de distance disponible pour ce scénario.
           agent._escapeSign = rand()<0.5 ? -1 : 1;
           let bdSign=Infinity, obsCpSign=null as Point | null;
-          for(const o of obstacles){
+          for(const o of blockingObstacles){
             const cp = closestPointOnWall(agent.x, agent.y, o.points);
             const d = Math.hypot(agent.x-cp.x, agent.y-cp.y);
             if(d<bdSign){ bdSign=d; obsCpSign=cp; }
@@ -1090,7 +1126,7 @@ export function updateAgents(
         });
       }
       for(const a of agents){
-        for(const o of obstacles){
+        for(const o of blockingObstacles){
           const cp = closestPointOnWall(a.x, a.y, o.points);
           const dx=a.x-cp.x, dy=a.y-cp.y;
           let d=Math.hypot(dx,dy);

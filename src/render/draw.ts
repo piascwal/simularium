@@ -2,7 +2,7 @@ import { CELL, PCELL } from '../core/constants';
 import { grid, gage, gcols, grows, gidx } from '../core/grid/conway';
 import { pherReturn, pherSearch, pcols, prows, pidx } from '../core/grid/pheromone';
 import { getMidden as getMiddenCore } from '../core/agent';
-import type { Agent, FoodSource, Exit, Alarm, Corpse } from '../core/agent';
+import type { Agent, FoodSource, Exit, Alarm, Corpse, Door } from '../core/agent';
 import type { AgentTypeDef, Obstacle, Point, ScenarioId } from '../core/types';
 
 // drawShape() / render() déplacées depuis le monolithe (tranche 10 du plan de
@@ -21,6 +21,7 @@ export interface RenderState {
   TYPES: Record<string, AgentTypeDef>;
   agents: Agent[];
   obstacles: Obstacle[];
+  doors: Door[];
   food: FoodSource[];
   exits: Exit[];
   alarms: Alarm[];
@@ -115,7 +116,7 @@ export function drawShape(ctx: CanvasRenderingContext2D, agent: Agent, TYPES: Re
 export function render(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const {
     W, H, zoneScale, worldW, worldH, t, scenario, TYPES, agents,
-    obstacles, food, exits, alarms, corpses, refuge,
+    obstacles, doors, food, exits, alarms, corpses, refuge,
     showPherSearch, showPherReturn, selectedTrail, selectedAgentId,
   } = state;
 
@@ -200,7 +201,27 @@ export function render(ctx: CanvasRenderingContext2D, state: RenderState): void 
       }
       ctx.restore();
     }
-    
+
+    for(const d of doors){
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(d.points[0].x, d.points[0].y);
+      for(let i=1;i<d.points.length;i++) ctx.lineTo(d.points[i].x, d.points[i].y);
+      if(d.open){
+        // Ouverte : contour fin en tirets (même langage visuel que le refuge) — se lit comme
+        // "actuellement franchissable", pas comme un mur.
+        ctx.strokeStyle = 'rgba(224,168,79,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+        ctx.stroke();
+      } else {
+        // Fermée : même traitement qu'un mur (fond sombre + liseré clair), teinté ambre pour
+        // rester identifiable comme une porte plutôt qu'un obstacle ordinaire.
+        ctx.strokeStyle = '#3a2f1f'; ctx.lineWidth = d.thickness*2; ctx.stroke();
+        ctx.strokeStyle = '#e0a84f'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     if(refuge){
       ctx.save(); ctx.strokeStyle = 'rgba(89,196,140,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([6,5]);
       ctx.beginPath(); ctx.arc(refuge.x, refuge.y, refuge.r, 0, Math.PI*2); ctx.stroke();
