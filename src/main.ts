@@ -180,7 +180,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
       carryingCapacity, noCapacityLimit, confusionStrength,
       edgeCaptures, interiorCaptures,
       cohesionWeight, alignmentWeight, separationWeight,
-      pheromoneRange, antCarryingCapacity, antNoCapacityLimit,
+      pheromoneRange, pheromonePersistence, antCarryingCapacity, antNoCapacityLimit,
       congestionStrength, exitRemovesAgents, totalEvacuated,
       selectedAgentId, selectedTrail,
     };
@@ -232,6 +232,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   let separationWeight = 1.1;
   let confusionStrength = 0.15;
   let pheromoneRange = 26;
+  let pheromonePersistence = 1;
 
   // Valeurs par défaut pensées pour rapprocher chaque scénario du comportement de la population
   // étudiée, plutôt qu'un seul jeu de curseurs générique partagé sans rapport avec le sujet :
@@ -318,6 +319,10 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   byId<HTMLInputElement>('pheromoneRangeSlider').addEventListener('input', function(){
     pheromoneRange = +this.value;
     byId('vPheromoneRange').textContent = this.value;
+  });
+  byId<HTMLInputElement>('pheromonePersistenceSlider').addEventListener('input', function(){
+    pheromonePersistence = (+this.value)/100;
+    byId('vPheromonePersistence').textContent = this.value + '%';
   });
   byId<HTMLInputElement>('antNoCapacityLimit').addEventListener('change', function(){
     antNoCapacityLimit = this.checked;
@@ -858,7 +863,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     const defaults: Record<string, number> = {
       starvation:20, birthRateSlider:15, capacitySlider:24,
       cohesion:5, alignment:7, separation:11, confusion:15,
-      antCapacitySlider:26, pheromoneRangeSlider:26,
+      antCapacitySlider:26, pheromoneRangeSlider:26, pheromonePersistenceSlider:100,
       ...SCENARIO_SLIDER_DEFAULTS[scenario]
     };
     for(const id in defaults){
@@ -880,6 +885,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
     byId('vCapacity').textContent = byId<HTMLInputElement>('capacitySlider').value;
     byId('vAntCapacity').textContent = byId<HTMLInputElement>('antCapacitySlider').value;
     byId('vPheromoneRange').textContent = byId<HTMLInputElement>('pheromoneRangeSlider').value;
+    byId('vPheromonePersistence').textContent = byId<HTMLInputElement>('pheromonePersistenceSlider').value + '%';
     byId('vCohesion').textContent = cohesionWeight.toFixed(1);
     byId('vAlignment').textContent = alignmentWeight.toFixed(1);
     byId('vSeparation').textContent = separationWeight.toFixed(1);

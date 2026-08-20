@@ -44,11 +44,16 @@ function evaporatePheromoneField(field: Float32Array | null, dt: number, rate: n
   }
 }
 
-export function evaporatePheromone(dt: number): void {
+// persistence=1 reproduit les taux d'origine (0.15 retour, 0.05 recherche) ; >1 les fait durer
+// plus longtemps (taux divisé d'autant), <1 les fait s'évaporer plus vite. Un facteur commun aux
+// deux pistes, pas un curseur par piste : garde le ratio 3:1 établi entre elles (Jackson &
+// Ratnieks 2006 — systèmes de pistes à durées de vie différentes selon leur rôle) quel que soit
+// le réglage global.
+export function evaporatePheromone(dt: number, persistence: number = 1): void {
   // La piste de retour (recrutement) s'efface vite — elle n'a de sens que peu de temps.
   // La piste de recherche dure plus longtemps : c'est le marqueur qui doit encore exister
-  // quand la fourmi revient d'un trajet long (Jackson & Ratnieks 2006 — systèmes de pistes
-  // à durées de vie différentes selon leur rôle).
-  evaporatePheromoneField(pherReturn, dt, 0.15);
-  evaporatePheromoneField(pherSearch, dt, 0.05);
+  // quand la fourmi revient d'un trajet long.
+  const p = Math.max(0.05, persistence);
+  evaporatePheromoneField(pherReturn, dt, 0.15/p);
+  evaporatePheromoneField(pherSearch, dt, 0.05/p);
 }

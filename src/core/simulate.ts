@@ -110,6 +110,7 @@ export interface SimulationState {
   separationWeight: number;
   // Colonie de fourmis
   pheromoneRange: number;
+  pheromonePersistence: number;
   antCarryingCapacity: number;
   antNoCapacityLimit: boolean;
   // Foule humaine
@@ -138,7 +139,7 @@ export function updateAgents(
     carryingCapacity, noCapacityLimit, confusionStrength,
     edgeCaptures, interiorCaptures,
     cohesionWeight, alignmentWeight, separationWeight,
-    pheromoneRange, antCarryingCapacity, antNoCapacityLimit,
+    pheromoneRange, pheromonePersistence, antCarryingCapacity, antNoCapacityLimit,
     congestionStrength, exitRemovesAgents, totalEvacuated,
     selectedAgentId, selectedTrail,
   } = state;
@@ -193,7 +194,7 @@ export function updateAgents(
 
   // ---- corps historique de updateAgents(), déplacé verbatim ----
     t += dt;
-    evaporatePheromone(dt);
+    evaporatePheromone(dt, pheromonePersistence);
     ageCorpses(dt);
     rebuildAgentGrid();
     // Reine mise en cache une fois par frame : appeler agents.find() depuis chaque fourmi

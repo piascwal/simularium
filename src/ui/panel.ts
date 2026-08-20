@@ -25,6 +25,7 @@ export function computeScenarioVisibility(scenario: ScenarioId, antNoCapacityLim
     behaviorGroupPoisson: scenario !== 'poisson',
     rowAntCapacity: scenario !== 'ants' || antNoCapacityLimit,
     rowPheromoneRange: scenario !== 'ants',
+    rowPheromonePersistence: scenario !== 'ants',
     legendHeider: scenario !== 'heider',
     legendHeiderTypes: scenario !== 'heider',
     legendAnts: scenario !== 'ants',
